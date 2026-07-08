@@ -83,6 +83,8 @@ KV namespace: 选择你的命名空间
 ADMIN_PASSCODE=你的访问口令
 ```
 
+Cloudflare Workers 的 PBKDF2 迭代次数上限是 100000，项目里的后台口令哈希已按这个限制处理。
+
 可选环境变量：
 
 ```text

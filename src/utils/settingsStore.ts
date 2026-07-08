@@ -35,7 +35,8 @@ interface SessionPayload {
 const STORE_PATH = resolve(process.cwd(), 'data', 'settings.local');
 const SESSION_COOKIE = 'fontsez_admin';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-const PBKDF2_ITERATIONS = 120000;
+const PBKDF2_ITERATIONS = 100000;
+const LEGACY_PBKDF2_ITERATIONS = 120000;
 
 function defaultSettings(): ManagedSettings {
   return {
@@ -83,10 +84,12 @@ function writeStore(store: SettingsFile): void {
   writeFileSync(STORE_PATH, `${JSON.stringify(store, null, 2)}\n`, 'utf-8');
 }
 
-function hashPasscode(passcode: string, salt: string): string {
-  return pbkdf2Sync(passcode, salt, PBKDF2_ITERATIONS, 32, 'sha256').toString(
-    'hex',
-  );
+function hashPasscode(
+  passcode: string,
+  salt: string,
+  iterations = PBKDF2_ITERATIONS,
+): string {
+  return pbkdf2Sync(passcode, salt, iterations, 32, 'sha256').toString('hex');
 }
 
 function safeEqualHex(a: string, b: string): boolean {
@@ -158,7 +161,14 @@ export function verifyAdminPasscode(passcode: string): boolean {
   const store = readStore();
   if (!store.admin.passwordHash || !store.admin.passwordSalt) return false;
   const hash = hashPasscode(passcode, store.admin.passwordSalt);
-  return safeEqualHex(hash, store.admin.passwordHash);
+  if (safeEqualHex(hash, store.admin.passwordHash)) return true;
+
+  const legacyHash = hashPasscode(
+    passcode,
+    store.admin.passwordSalt,
+    LEGACY_PBKDF2_ITERATIONS,
+  );
+  return safeEqualHex(legacyHash, store.admin.passwordHash);
 }
 
 export function changeAdminPasscode(

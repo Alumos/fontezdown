@@ -82,7 +82,7 @@ const STORE_KEY = 'fontsez:settings';
 const CACHE_KEY = 'fontsez:fonts-cache';
 const SESSION_COOKIE = 'fontsez_admin';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-const PBKDF2_ITERATIONS = 120000;
+const PBKDF2_ITERATIONS = 100000;
 
 const app = new Hono<{ Bindings: EdgeEnv }>();
 
