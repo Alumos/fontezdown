@@ -1,0 +1,515 @@
+import axios, { type AxiosRequestConfig } from 'axios';
+
+export interface TencentCredentials {
+  clientId: string;
+  accessToken: string;
+  openId: string;
+}
+
+export interface TencentDocSyncInput {
+  docUrl: string;
+  credentials: TencentCredentials;
+}
+
+export interface FontLinkItem {
+  id: string;
+  fontName: string;
+  lanzouUrl: string;
+  sourceLine: string;
+}
+
+export interface TencentDocSyncResult {
+  docUrl: string;
+  encodedId: string;
+  fileId: string;
+  fetchedAt: string;
+  items: FontLinkItem[];
+}
+
+type JsonObject = Record<string, unknown>;
+
+const LANZOU_URL_RE =
+  /\b(?:https?:\/\/)?(?:[\w-]+\.)?(?:lanzou[a-z0-9]*|lanzn)\.com\/[^\s"'<>，。；、\])）]+/gi;
+const TENCENT_SYNC_RETRY_ATTEMPTS = 3;
+const TENCENT_SYNC_RETRY_BASE_MS = 700;
+const TRANSIENT_TENCENT_ERROR_RE =
+  /file service timeout|timeout|timed out|etimedout|econnreset|eai_again|socket hang up|network error/i;
+
+const TEXT_KEYS = new Set([
+  'caption',
+  'content',
+  'insert',
+  'name',
+  'plaintext',
+  'text',
+  'title',
+  'value',
+]);
+
+function isTextKey(key: string): boolean {
+  return TEXT_KEYS.has(key.replace(/[-_]/g, '').toLowerCase());
+}
+
+function matchLanzouUrls(text: string): string[] {
+  LANZOU_URL_RE.lastIndex = 0;
+  return text.match(LANZOU_URL_RE) ?? [];
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function retryableStatus(status: number | undefined): boolean {
+  return Boolean(
+    status &&
+      (status === 408 || status === 409 || status === 429 || status >= 500),
+  );
+}
+
+function errorText(error: unknown): string {
+  const parts: string[] = [];
+
+  if (error instanceof Error) {
+    parts.push(error.message);
+  }
+
+  if (axios.isAxiosError(error)) {
+    if (error.code) parts.push(error.code);
+    if (error.response?.status) parts.push(String(error.response.status));
+
+    const data = error.response?.data;
+    if (typeof data === 'string') {
+      parts.push(data);
+    } else if (typeof data === 'object' && data !== null) {
+      const record = data as Record<string, unknown>;
+      for (const key of ['msg', 'message', 'errmsg']) {
+        const value = record[key];
+        if (typeof value === 'string') parts.push(value);
+      }
+    }
+  }
+
+  return parts.join(' ');
+}
+
+function isTransientTencentError(error: unknown): boolean {
+  if (axios.isAxiosError(error) && retryableStatus(error.response?.status)) {
+    return true;
+  }
+
+  return TRANSIENT_TENCENT_ERROR_RE.test(errorText(error));
+}
+
+async function withTencentRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= TENCENT_SYNC_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt >= TENCENT_SYNC_RETRY_ATTEMPTS ||
+        !isTransientTencentError(error)
+      ) {
+        throw error;
+      }
+
+      await sleep(TENCENT_SYNC_RETRY_BASE_MS * attempt);
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+}
+
+function isHyperlinkFieldText(text: string): boolean {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return (
+    /^HYPERLINK\b/i.test(normalized) ||
+    /(?:\\t|\s)d(?:key|fe|fn|fu|lt)\b/i.test(normalized)
+  );
+}
+
+function authHeaders(credentials: TencentCredentials): Record<string, string> {
+  return {
+    'Access-Token': credentials.accessToken,
+    'Client-Id': credentials.clientId,
+    'Open-Id': credentials.openId,
+  };
+}
+
+function assertCredentials(credentials: TencentCredentials): void {
+  const missing = [
+    ['TENCENT_DOC_CLIENT_ID', credentials.clientId],
+    ['TENCENT_DOC_ACCESS_TOKEN', credentials.accessToken],
+    ['TENCENT_DOC_OPEN_ID', credentials.openId],
+  ]
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    throw new Error(`缺少腾讯文档凭据：${missing.join(', ')}`);
+  }
+}
+
+export function extractEncodedId(docUrlOrId: string): string {
+  const trimmed = docUrlOrId.trim();
+  if (!trimmed) throw new Error('缺少腾讯文档地址');
+
+  try {
+    const url = new URL(trimmed);
+    const match = url.pathname.match(/\/(?:doc|sheet|slide)\/([^/?#]+)/);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+
+    const parts = url.pathname.split('/').filter(Boolean);
+    const lastPart = parts.at(-1);
+    if (lastPart) return decodeURIComponent(lastPart);
+  } catch {
+    return trimmed;
+  }
+
+  return trimmed;
+}
+
+function parseTencentPayload(payload: unknown): JsonObject {
+  if (typeof payload === 'object' && payload !== null) {
+    return payload as JsonObject;
+  }
+  if (typeof payload !== 'string') {
+    throw new Error('腾讯文档接口返回了无法识别的数据');
+  }
+
+  const candidates = [payload, payload.replaceAll("'", '"')];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed as JsonObject;
+      }
+    } catch {
+      // Try the next representation.
+    }
+  }
+
+  throw new Error('腾讯文档接口返回的 JSON 解析失败');
+}
+
+function responseRet(payload: JsonObject): number | undefined {
+  const ret = payload.ret ?? payload.code;
+  return typeof ret === 'number' ? ret : undefined;
+}
+
+function responseMessage(payload: JsonObject): string {
+  const message = payload.msg ?? payload.message ?? payload.errmsg;
+  return typeof message === 'string' && message
+    ? message
+    : '腾讯文档接口请求失败';
+}
+
+function objectValue(payload: JsonObject, key: string): JsonObject | undefined {
+  const value = payload[key];
+  return typeof value === 'object' && value !== null
+    ? (value as JsonObject)
+    : undefined;
+}
+
+function findStringValue(value: unknown, keys: string[]): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findStringValue(item, keys);
+      if (found) return found;
+    }
+    return undefined;
+  }
+
+  const record = value as JsonObject;
+  for (const key of keys) {
+    const direct = record[key];
+    if (typeof direct === 'string' && direct) return direct;
+  }
+
+  for (const item of Object.values(record)) {
+    const found = findStringValue(item, keys);
+    if (found) return found;
+  }
+
+  return undefined;
+}
+
+async function getFileId(
+  encodedId: string,
+  credentials: TencentCredentials,
+): Promise<string> {
+  const requestConfig: AxiosRequestConfig = {
+    headers: authHeaders(credentials),
+    responseType: 'text',
+    timeout: 15000,
+    validateStatus: () => true,
+  };
+
+  const response = await axios.get(
+    'https://docs.qq.com/openapi/drive/v2/util/converter',
+    {
+      ...requestConfig,
+      params: {
+        type: 2,
+        value: encodedId,
+      },
+    },
+  );
+  const payload = parseTencentPayload(response.data);
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(responseMessage(payload));
+  }
+
+  const ret = responseRet(payload);
+  if (ret !== undefined && ret !== 0) throw new Error(responseMessage(payload));
+
+  const fileId = findStringValue(payload, ['fileID', 'fileId', 'id']);
+  if (!fileId) throw new Error('腾讯文档接口未返回 fileID');
+
+  return fileId;
+}
+
+async function getDocument(
+  fileId: string,
+  credentials: TencentCredentials,
+): Promise<JsonObject> {
+  const response = await axios.get(
+    `https://docs.qq.com/openapi/doc/v3/${encodeURIComponent(fileId)}`,
+    {
+      headers: authHeaders(credentials),
+      responseType: 'json',
+      timeout: 20000,
+      validateStatus: () => true,
+    },
+  );
+  const payload = parseTencentPayload(response.data);
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(responseMessage(payload));
+  }
+
+  const ret = responseRet(payload);
+  if (ret !== undefined && ret !== 0) throw new Error(responseMessage(payload));
+  return payload;
+}
+
+function textAndUrlsFromNode(value: unknown): {
+  textParts: string[];
+  urls: string[];
+} {
+  const result = {
+    textParts: [] as string[],
+    urls: [] as string[],
+  };
+
+  function walk(current: unknown, key = ''): void {
+    if (typeof current === 'string') {
+      const urls = matchLanzouUrls(current);
+      result.urls.push(...urls);
+
+      if (isTextKey(key)) {
+        result.textParts.push(current);
+      }
+      return;
+    }
+
+    if (Array.isArray(current)) {
+      for (const item of current) walk(item);
+      return;
+    }
+
+    if (typeof current === 'object' && current !== null) {
+      for (const [childKey, childValue] of Object.entries(current)) {
+        walk(childValue, childKey);
+      }
+    }
+  }
+
+  walk(value);
+  return result;
+}
+
+function uniqueLines(lines: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+
+  for (const line of lines) {
+    const normalized = line.replace(/\s+/g, ' ').trim();
+    if (!normalized || seen.has(normalized)) continue;
+
+    seen.add(normalized);
+    result.push(normalized);
+  }
+
+  return result;
+}
+
+function collectLooseLines(payload: unknown): string[] {
+  const lines: string[] = [];
+
+  function pushLine(value: string): void {
+    for (const line of value.split(/\r?\n/)) {
+      const normalized = line.replace(/\s+/g, ' ').trim();
+      if (normalized) lines.push(normalized);
+    }
+  }
+
+  function walk(current: unknown, key = ''): void {
+    if (typeof current === 'string') {
+      if (matchLanzouUrls(current).length > 0 || isTextKey(key)) {
+        pushLine(current);
+      }
+      return;
+    }
+
+    if (Array.isArray(current)) {
+      for (const item of current) walk(item);
+      return;
+    }
+
+    if (typeof current === 'object' && current !== null) {
+      const record = current as JsonObject;
+      const localTexts: string[] = [];
+      const localUrls: string[] = [];
+
+      for (const [childKey, childValue] of Object.entries(record)) {
+        if (typeof childValue !== 'string') continue;
+
+        const urls = matchLanzouUrls(childValue);
+        if (urls.length > 0) localUrls.push(...urls);
+        if (isTextKey(childKey)) localTexts.push(childValue);
+      }
+
+      if (localUrls.length > 0) {
+        pushLine([...localTexts, ...localUrls].join(' '));
+      }
+
+      for (const [childKey, childValue] of Object.entries(record)) {
+        walk(childValue, childKey);
+      }
+    }
+  }
+
+  walk(payload);
+  return uniqueLines(lines);
+}
+
+function collectParagraphLines(payload: unknown): string[] {
+  const lines: string[] = [];
+
+  function walk(current: unknown): void {
+    if (typeof current !== 'object' || current === null) return;
+
+    if (Array.isArray(current)) {
+      for (const item of current) walk(item);
+      return;
+    }
+
+    const record = current as JsonObject;
+    const type = record.type;
+    if (type === 'Paragraph' || type === 'TableCell') {
+      const { textParts, urls } = textAndUrlsFromNode(record);
+      const text = [...textParts, ...urls]
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) lines.push(text);
+    }
+
+    for (const value of Object.values(record)) walk(value);
+  }
+
+  walk(payload);
+
+  return uniqueLines([...lines, ...collectLooseLines(payload)]);
+}
+
+function cleanFontName(text: string): string {
+  if (isHyperlinkFieldText(text)) return '';
+
+  return text
+    .replace(/\[[^\]]*lanzou[^\]]*\]\([^)]*\)/gi, ' ')
+    .replace(LANZOU_URL_RE, ' ')
+    .replace(/HYPERLINK\b.*$/i, ' ')
+    .replace(
+      /(?:蓝奏云?|下载|链接|地址|提取码|访问码|密码|pwd|pass)\s*[:：]?\s*/gi,
+      ' ',
+    )
+    .replace(/\[/g, ' ')
+    .replace(/\]/g, ' ')
+    .replace(/[()（）【】]+/g, ' ')
+    .replace(/[|｜,，;；、\t]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[-:：\s]+|[-:：\s]+$/g, '')
+    .trim();
+}
+
+function normalizeLanzouUrl(url: string): string {
+  const cleanUrl = url.replace(/[)\]）】。；;，,]+$/g, '');
+  return /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
+}
+
+export function extractFontLinks(lines: string[]): FontLinkItem[] {
+  const items: FontLinkItem[] = [];
+  const seen = new Set<string>();
+  let previousTextLine = '';
+
+  for (const line of lines) {
+    const urls = matchLanzouUrls(line);
+    if (!urls || urls.length === 0) {
+      const cleanLine = cleanFontName(line);
+      if (cleanLine) previousTextLine = cleanLine;
+      continue;
+    }
+
+    for (const rawUrl of urls) {
+      const lanzouUrl = normalizeLanzouUrl(rawUrl);
+      const fontName =
+        cleanFontName(line) ||
+        previousTextLine ||
+        `未命名字体 ${items.length + 1}`;
+      const key = `${fontName}|${lanzouUrl}`;
+      if (seen.has(key)) continue;
+
+      seen.add(key);
+      items.push({
+        id: Buffer.from(key).toString('base64url'),
+        fontName,
+        lanzouUrl,
+        sourceLine: line,
+      });
+    }
+  }
+
+  return items;
+}
+
+export async function syncTencentDocFonts({
+  docUrl,
+  credentials,
+}: TencentDocSyncInput): Promise<TencentDocSyncResult> {
+  assertCredentials(credentials);
+
+  const encodedId = extractEncodedId(docUrl);
+  const fileId = await withTencentRetry(() => getFileId(encodedId, credentials));
+  const document = await withTencentRetry(() =>
+    getDocument(fileId, credentials),
+  );
+  const lines = collectParagraphLines(
+    objectValue(document, 'data') ?? document,
+  );
+  const items = extractFontLinks(lines);
+
+  return {
+    docUrl,
+    encodedId,
+    fileId,
+    fetchedAt: new Date().toISOString(),
+    items,
+  };
+}
