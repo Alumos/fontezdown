@@ -71,20 +71,27 @@ pnpm run cloudflare:deploy
 
 后台口令、腾讯文档配置和字体缓存都需要持久化保存，Pages Functions 本身不保存本地文件，所以必须绑定 KV。
 
-本项目的绑定由 `wrangler.toml` 管理，文件里已经声明：
+推荐在 Cloudflare Dashboard 里绑定 KV，不要把 KV namespace ID 写进公开仓库。
 
-```toml
-[[kv_namespaces]]
-binding = "FONTSEZ_KV"
+1. 先创建 KV namespace：
+
+```text
+Cloudflare Dashboard -> Workers & Pages -> KV -> Create namespace
+Namespace name: fontezdown
 ```
 
-Cloudflare 部署时会按这个 binding 创建或绑定 KV。绑定生效后，可以在：
+2. 再绑定到 Pages 项目：
 
 ```text
 Workers & Pages -> 你的 Pages 项目 -> Settings -> Functions -> Bindings
+Add binding -> KV namespace
+Variable name: FONTSEZ_KV
+KV namespace: 选择刚创建或已有的 namespace
 ```
 
-看到 `FONTSEZ_KV`。如果控制台提示“此项目的绑定通过 wrangler.toml 管理”，这是正常的，继续通过仓库里的 `wrangler.toml` 修改绑定即可。
+Production 和 Preview 如果分开配置，两个环境都要绑定。绑定后需要重新部署一次才会生效。
+
+如果控制台提示“此项目的绑定通过 wrangler.toml 管理”，请确认 `wrangler.toml` 里没有 `[[kv_namespaces]]` 配置；删除后重新部署，控制台绑定入口会恢复。
 
 至少设置一个访问口令，建议用 Secret：
 
