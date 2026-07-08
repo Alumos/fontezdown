@@ -35,7 +35,7 @@ Missing entry-point to Worker script or to assets directory
 
 Cloudflare Pages 的 Direct Upload 分两种：
 
-- Dashboard 拖拽/上传：只适合纯静态文件，不会编译 `functions/`，也不会完整处理 `wrangler.toml`。
+- Dashboard 拖拽/上传：只适合纯静态文件，不会完整处理 `functions/`。
 - Wrangler CLI：可以上传静态资源，同时上传 `functions/`。
 
 如果你看到类似提示：
@@ -91,7 +91,7 @@ KV namespace: 选择刚创建或已有的 namespace
 
 Production 和 Preview 如果分开配置，两个环境都要绑定。绑定后需要重新部署一次才会生效。
 
-如果控制台提示“此项目的绑定通过 wrangler.toml 管理”，请确认 `wrangler.toml` 里没有 `[[kv_namespaces]]` 配置；删除后重新部署，控制台绑定入口会恢复。
+如果控制台提示“此项目的绑定通过 wrangler.toml 管理”，说明仓库根目录里仍然存在 Wrangler 配置文件。这个项目为了避免公开 KV namespace ID，不提交 `wrangler.toml`，请先部署删除该文件后的最新提交，再回到 Dashboard 绑定 KV。
 
 至少设置一个访问口令，建议用 Secret：
 
@@ -113,10 +113,12 @@ LANZOU_PWD=蓝奏云默认密码
 
 ## 兼容性
 
-`wrangler.toml` 已启用：
+因为本项目不提交 `wrangler.toml`，兼容性也在 Cloudflare Dashboard 里设置：
 
 ```text
-compatibility_flags = ["nodejs_compat"]
+Workers & Pages -> 你的 Pages 项目 -> Settings -> Functions -> Compatibility
+Compatibility date: 2026-07-08 或更晚的当前日期
+Compatibility flags: nodejs_compat
 ```
 
 这是为了让 Cloudflare Workers Runtime 更好地兼容 axios、cheerio 以及少量 Node 风格 API。

@@ -163,8 +163,7 @@ GET /lanzou?url=https://lanzou.com/xxxx&type=redirect
 │       ├── tencentDocs.ts      # 腾讯文档同步和链接提取
 │       └── lanzou/             # 蓝奏云解析逻辑
 ├── README_CLOUDFLARE.md        # Cloudflare Pages 部署说明
-├── README_EDGEONE.md           # EdgeOne Pages 部署说明
-└── wrangler.toml               # Cloudflare Pages 配置
+└── README_EDGEONE.md           # EdgeOne Pages 部署说明
 ```
 
 ## 部署
