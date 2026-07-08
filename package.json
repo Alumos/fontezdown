@@ -9,6 +9,7 @@
     "dev": "tsx src/app.ts",
     "build": "tsc",
     "cloudflare:check": "tsc -p tsconfig.edgeone.json --noEmit",
+    "cloudflare:deploy": "npx wrangler pages deploy public --project-name fontezdown",
     "edgeone:check": "tsc -p tsconfig.edgeone.json --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",

@@ -11,6 +11,7 @@ Framework preset: None
 Build command: corepack pnpm run cloudflare:check
 Build output directory: public
 Root directory: /
+Deploy command: 留空
 ```
 
 如果 Cloudflare 没有自动安装 pnpm 依赖，可以改成：
@@ -18,6 +19,17 @@ Root directory: /
 ```text
 Build command: corepack enable && corepack pnpm install --frozen-lockfile && corepack pnpm run cloudflare:check
 ```
+
+注意：如果你使用 Cloudflare Pages 的 Git integration，不要在控制台里填写 `npx wrangler deploy` 作为 Deploy command。Pages 会在构建成功后自动部署 `public` 和 `functions/`。
+
+如果日志里出现：
+
+```text
+It seems that you have run `wrangler deploy` on a Pages project
+Missing entry-point to Worker script or to assets directory
+```
+
+说明当前配置把 Pages 项目当成普通 Worker 部署了。把 Deploy command 清空，或者改用下面的 `wrangler pages deploy` 命令。
 
 ## 不能用网页拖拽上传
 
@@ -45,6 +57,12 @@ corepack pnpm install --frozen-lockfile
 corepack pnpm run cloudflare:check
 npx wrangler login
 npx wrangler pages deploy public --project-name 你的项目名
+```
+
+仓库里也提供了脚本：
+
+```bash
+pnpm run cloudflare:deploy
 ```
 
 注意：必须在项目根目录执行 `wrangler pages deploy public`，这样 Wrangler 才会把同级的 `functions/` 一起上传。
