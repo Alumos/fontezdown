@@ -69,13 +69,25 @@ pnpm run cloudflare:deploy
 
 ## 必要配置
 
-在 Cloudflare Pages 项目里绑定 KV：
+在 Cloudflare Pages 项目里绑定 KV。后台口令、腾讯文档配置和字体缓存都需要持久化保存，Pages Functions 本身不保存本地文件，所以必须绑定 KV。
+
+1. 先创建 KV namespace：
 
 ```text
-Settings -> Bindings -> Add -> KV namespace
-Variable name: FONTSEZ_KV
-KV namespace: 选择你的命名空间
+Cloudflare Dashboard -> Workers & Pages -> KV -> Create namespace
+Namespace name: fontezdown
 ```
+
+2. 再绑定到 Pages 项目：
+
+```text
+Workers & Pages -> 你的 Pages 项目 -> Settings -> Functions -> Bindings
+Add binding -> KV namespace
+Variable name: FONTSEZ_KV
+KV namespace: 选择刚创建的 namespace
+```
+
+Production 和 Preview 如果分开配置，两个环境都要绑定。绑定后需要重新部署一次才会生效。
 
 至少设置一个访问口令，建议用 Secret：
 

@@ -249,7 +249,7 @@ async function emptyAdmin(env: EdgeEnv): Promise<AdminState> {
 
 function requireKv(env: EdgeEnv): EdgeKv {
   if (!env.FONTSEZ_KV) {
-    throw new Error('EdgeOne KV 未绑定：请绑定变量名 FONTSEZ_KV');
+    throw new Error('KV 未绑定：请在 Cloudflare Pages 或 EdgeOne 中绑定变量名 FONTSEZ_KV');
   }
   return env.FONTSEZ_KV;
 }
