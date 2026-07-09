@@ -2,6 +2,10 @@ import config from '../config/config.js';
 import { readFontCache, writeFontCache } from '../utils/fontCache.js';
 import { parseLanzouUrl } from '../utils/lanzou/lanzouParser.js';
 import {
+  readParsedCacheForItems,
+  writeParsedCacheRecord,
+} from '../utils/parsedCache.js';
+import {
   type ManagedSettings,
   addAccessPasscode,
   changeAdminPasscode,
@@ -32,6 +36,8 @@ import { type Context, Hono } from 'hono';
 const router = new Hono();
 
 interface LanzouParseRequest {
+  itemId?: unknown;
+  fontName?: unknown;
   url?: unknown;
   pwd?: unknown;
 }
@@ -304,6 +310,7 @@ router.post('/fonts/sync', async (c) => {
       data: {
         ...cache,
         fromCache: false,
+        parsedCache: readParsedCacheForItems(cache.items),
       },
     });
   } catch (error) {
@@ -317,6 +324,7 @@ router.post('/fonts/sync', async (c) => {
           ...cache,
           fromCache: true,
           syncError: message,
+          parsedCache: readParsedCacheForItems(cache.items),
         },
       });
     }
@@ -346,6 +354,7 @@ router.get('/fonts/cache', (c) => {
       ? {
           ...cache,
           fromCache: true,
+          parsedCache: readParsedCacheForItems(cache.items),
         }
       : {
           docUrl,
@@ -360,6 +369,8 @@ router.post('/lanzou/parse', async (c) => {
   if (denied) return denied;
 
   const body = await readJson<LanzouParseRequest>(c.req.raw);
+  const itemId = stringValue(body.itemId);
+  const fontName = stringValue(body.fontName);
   const url = stringValue(body.url);
   const pwd = stringValue(body.pwd) || getManagedSettings().lanzouPwd;
 
@@ -378,29 +389,53 @@ router.post('/lanzou/parse', async (c) => {
       return c.json(result, 400);
     }
 
+    const files =
+      'files' in result.data
+        ? result.data.files
+        : [
+            {
+              name: (result.data as ParseSuccessData).name,
+              size: (result.data as ParseSuccessData).filesize,
+              date: '',
+              downloadUrl: (result.data as ParseSuccessData).downUrl,
+            },
+          ];
+    let parsedAt = '';
+    let parsedCacheError = '';
+    if (itemId && files.length > 0) {
+      try {
+        parsedAt = writeParsedCacheRecord({
+          itemId,
+          fontName,
+          lanzouUrl: url,
+          files,
+        }).parsedAt;
+      } catch (error) {
+        parsedCacheError = error instanceof Error ? error.message : String(error);
+      }
+    }
+
     if ('files' in result.data) {
       return c.json({
         code: 0,
         msg: result.msg,
         data: {
-          files: result.data.files,
+          files,
+          parsedAt,
+          parsedCacheError,
+          fromParsedCache: false,
         },
       });
     }
 
-    const parsedData = result.data as ParseSuccessData;
     return c.json({
       code: 0,
       msg: result.msg,
       data: {
-        files: [
-          {
-            name: parsedData.name,
-            size: parsedData.filesize,
-            date: '',
-            downloadUrl: parsedData.downUrl,
-          },
-        ],
+        files,
+        parsedAt,
+        parsedCacheError,
+        fromParsedCache: false,
       },
     });
   } catch (error) {

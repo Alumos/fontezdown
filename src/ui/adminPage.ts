@@ -1,25 +1,32 @@
+import { externalFontCssUrl, fontFamilyStack, siteName } from "./brand.js";
+
 export function renderAdminPage(): string {
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>字体蓝奏下载台 - 管理后台</title>
+    <title>${siteName} - 管理后台</title>
     <style>
+      @import url("${externalFontCssUrl}");
+
       :root {
         color-scheme: light;
-        --bg: #f4f8f6;
-        --glass: rgba(255, 255, 255, 0.66);
-        --glass-strong: rgba(255, 255, 255, 0.88);
-        --line: rgba(83, 103, 124, 0.18);
-        --text: #142033;
-        --muted: #667387;
-        --blue: #4d7fcb;
-        --blue-deep: #285e9f;
-        --green: #2d8a7d;
-        --red: #c44848;
-        --shadow: 0 24px 72px rgba(35, 49, 73, 0.13);
-        --shadow-soft: 0 12px 34px rgba(35, 49, 73, 0.1);
+        --surface: rgba(255, 252, 244, 0.82);
+        --ink: #1f2523;
+        --muted: #69726e;
+        --line: rgba(75, 82, 77, 0.18);
+        --blue: #3d6f92;
+        --blue-deep: #224e69;
+        --green: #42785f;
+        --green-deep: #245a45;
+        --gold: #b47a2a;
+        --red: #b23a3f;
+        --shadow: 0 18px 54px rgba(33, 36, 32, 0.13);
+        --shadow-soft: 0 10px 26px rgba(33, 36, 32, 0.09);
+        --radius-lg: 26px;
+        --radius-md: 18px;
+        --radius-sm: 14px;
       }
 
       * {
@@ -29,18 +36,17 @@ export function renderAdminPage(): string {
       body {
         margin: 0;
         min-height: 100vh;
-        color: var(--text);
-        font-family:
-          Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+        font-family: ${fontFamilyStack};
         background:
-          linear-gradient(150deg, rgba(244, 249, 247, 0.98), rgba(235, 242, 249, 0.96) 46%, rgba(249, 242, 246, 0.96)),
-          linear-gradient(90deg, rgba(111, 157, 179, 0.12), rgba(128, 169, 150, 0.1), rgba(201, 115, 134, 0.1)),
+          linear-gradient(140deg, rgba(247, 243, 236, 0.96), rgba(236, 242, 237, 0.95) 44%, rgba(246, 239, 224, 0.96)),
+          linear-gradient(90deg, rgba(61, 111, 146, 0.12), rgba(66, 120, 95, 0.1), rgba(180, 122, 42, 0.11)),
           repeating-linear-gradient(
             115deg,
-            rgba(255, 255, 255, 0.32) 0,
-            rgba(255, 255, 255, 0.32) 1px,
+            rgba(72, 83, 75, 0.055) 0,
+            rgba(72, 83, 75, 0.055) 1px,
             transparent 1px,
-            transparent 26px
+            transparent 24px
           );
         background-attachment: fixed;
       }
@@ -51,17 +57,28 @@ export function renderAdminPage(): string {
       }
 
       .shell {
-        width: min(1080px, calc(100% - 28px));
+        width: min(1180px, calc(100% - 28px));
         margin: 0 auto;
-        padding: 28px 0 46px;
+        padding: 22px 0 46px;
       }
 
       header {
+        position: sticky;
+        top: 12px;
+        z-index: 5;
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        background:
+          linear-gradient(180deg, rgba(255, 252, 244, 0.93), rgba(255, 252, 244, 0.73)),
+          var(--surface);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(24px) saturate(150%);
+        padding: 15px;
       }
 
       h1,
@@ -91,12 +108,12 @@ export function renderAdminPage(): string {
 
       .panel {
         border: 1px solid var(--line);
-        border-radius: 22px;
+        border-radius: var(--radius-lg);
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.76), rgba(255, 255, 255, 0.56)),
-          var(--glass);
+          linear-gradient(180deg, rgba(255, 252, 244, 0.9), rgba(255, 252, 244, 0.68)),
+          var(--surface);
         box-shadow: var(--shadow);
-        backdrop-filter: blur(28px) saturate(165%);
+        backdrop-filter: blur(22px) saturate(145%);
       }
 
       .auth {
@@ -107,12 +124,13 @@ export function renderAdminPage(): string {
 
       .grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.58fr);
+        grid-template-columns: minmax(0, 1fr) minmax(320px, 0.62fr);
         gap: 16px;
+        align-items: start;
       }
 
       .card {
-        padding: 22px;
+        padding: 20px;
       }
 
       .fields {
@@ -136,9 +154,9 @@ export function renderAdminPage(): string {
         width: 100%;
         min-height: 46px;
         border: 1px solid var(--line);
-        border-radius: 14px;
-        color: var(--text);
-        background: rgba(255, 255, 255, 0.74);
+        border-radius: var(--radius-md);
+        color: var(--ink);
+        background: rgba(255, 252, 244, 0.84);
         outline: 0;
         padding: 10px 14px;
         transition:
@@ -148,41 +166,60 @@ export function renderAdminPage(): string {
       }
 
       input:focus {
-        border-color: rgba(77, 127, 203, 0.58);
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 0 0 5px rgba(77, 127, 203, 0.12);
+        border-color: rgba(61, 111, 146, 0.58);
+        background: rgba(255, 252, 244, 0.96);
+        box-shadow: 0 0 0 5px rgba(61, 111, 146, 0.12);
       }
 
       .btn {
+        position: relative;
         min-height: 44px;
         border: 0;
-        border-radius: 14px;
+        border-radius: var(--radius-md);
         padding: 9px 14px;
         background: linear-gradient(180deg, var(--blue), var(--blue-deep));
-        box-shadow: 0 13px 26px rgba(77, 127, 203, 0.24);
+        box-shadow: 0 12px 24px rgba(61, 111, 146, 0.24);
         color: #fff;
         cursor: pointer;
         font-weight: 800;
+        overflow: hidden;
         transition:
           transform 0.18s ease,
           box-shadow 0.18s ease,
           border-color 0.18s ease;
       }
 
+      .btn::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform: translateX(-120%);
+        background: linear-gradient(
+          100deg,
+          transparent,
+          rgba(255, 255, 255, 0.32),
+          transparent
+        );
+      }
+
       .btn:hover {
         transform: translateY(-1px);
-        box-shadow: 0 16px 30px rgba(77, 127, 203, 0.25);
+        box-shadow: 0 16px 30px rgba(61, 111, 146, 0.25);
+      }
+
+      .btn:hover::after {
+        animation: sheen 0.9s ease;
       }
 
       .btn.secondary {
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.72);
-        box-shadow: 0 8px 18px rgba(35, 49, 73, 0.06);
-        color: var(--text);
+        background: rgba(255, 252, 244, 0.76);
+        box-shadow: 0 8px 18px rgba(33, 36, 32, 0.06);
+        color: var(--ink);
       }
 
       .btn.secondary:hover {
-        border-color: rgba(77, 127, 203, 0.32);
+        border-color: rgba(61, 111, 146, 0.32);
         box-shadow: var(--shadow-soft);
       }
 
@@ -226,8 +263,8 @@ export function renderAdminPage(): string {
         align-items: center;
         min-height: 42px;
         border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.54);
+        border-radius: var(--radius-md);
+        background: rgba(255, 252, 244, 0.64);
         padding: 8px 10px;
       }
 
@@ -248,9 +285,16 @@ export function renderAdminPage(): string {
         display: none !important;
       }
 
+      @keyframes sheen {
+        to {
+          transform: translateX(120%);
+        }
+      }
+
       @media (max-width: 760px) {
         header,
         .grid {
+          display: grid;
           grid-template-columns: 1fr;
         }
 
@@ -269,7 +313,7 @@ export function renderAdminPage(): string {
     <div class="shell">
       <header>
         <div>
-          <h1>管理后台</h1>
+          <h1>${siteName} 管理后台</h1>
           <div class="status" id="topStatus"></div>
         </div>
         <a href="/">返回主界面</a>

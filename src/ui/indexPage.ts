@@ -1,30 +1,47 @@
+import { externalFontCssUrl, fontFamilyStack, siteName } from "./brand.js";
+
 export function renderIndexPage(): string {
   return `<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>字体蓝奏下载台</title>
+    <title>${siteName}</title>
     <style>
+      @import url("${externalFontCssUrl}");
+
       :root {
         color-scheme: light;
-        --bg: #f4f8f6;
-        --glass: rgba(255, 255, 255, 0.66);
-        --glass-strong: rgba(255, 255, 255, 0.88);
-        --line: rgba(83, 103, 124, 0.18);
-        --line-strong: rgba(79, 101, 126, 0.34);
-        --text: #142033;
-        --muted: #667387;
-        --blue: #4d7fcb;
-        --blue-deep: #285e9f;
-        --green: #2d8a7d;
-        --green-soft: #dff3ed;
-        --iris: #7779b7;
-        --rose: #c97386;
-        --red: #c44848;
-        --amber: #9c6a1a;
-        --shadow: 0 24px 72px rgba(35, 49, 73, 0.13);
-        --shadow-soft: 0 12px 34px rgba(35, 49, 73, 0.1);
+        --surface: rgba(255, 255, 255, 0.64);
+        --surface-strong: rgba(255, 255, 255, 0.84);
+        --ink: #172025;
+        --muted: #60717a;
+        --line: rgba(39, 59, 67, 0.18);
+        --line-strong: rgba(39, 59, 67, 0.34);
+        --blue: #3d789d;
+        --blue-deep: #235270;
+        --green: #3b846f;
+        --green-deep: #21634f;
+        --gold: #b98530;
+        --red: #b94b55;
+        --liquid-bg: rgba(255, 255, 255, 0.12);
+        --liquid-bg-strong: rgba(255, 255, 255, 0.18);
+        --liquid-border: rgba(255, 255, 255, 0.36);
+        --liquid-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.52),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+          inset 6px 6px 16px rgba(255, 255, 255, 0.14),
+          0 18px 44px rgba(22, 34, 42, 0.24);
+        --liquid-shadow-soft:
+          inset 0 1px 0 rgba(255, 255, 255, 0.42),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+          0 10px 28px rgba(22, 34, 42, 0.16);
+        --radius-lg: 26px;
+        --radius-md: 18px;
+        --radius-sm: 14px;
+        --radius-pill: 999px;
+        --shadow: var(--liquid-shadow);
+        --shadow-soft: var(--liquid-shadow-soft);
       }
 
       * {
@@ -34,18 +51,18 @@ export function renderIndexPage(): string {
       body {
         margin: 0;
         min-height: 100vh;
-        color: var(--text);
-        font-family:
-          Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+        color: var(--ink);
+        font-family: ${fontFamilyStack};
         background:
-          linear-gradient(150deg, rgba(244, 249, 247, 0.98), rgba(235, 242, 249, 0.96) 46%, rgba(249, 242, 246, 0.96)),
-          linear-gradient(90deg, rgba(111, 157, 179, 0.12), rgba(128, 169, 150, 0.1), rgba(201, 115, 134, 0.1)),
+          linear-gradient(135deg, rgba(215, 230, 236, 0.92), rgba(239, 244, 240, 0.9) 44%, rgba(230, 224, 239, 0.86)),
+          linear-gradient(115deg, rgba(61, 120, 157, 0.2), transparent 45%),
+          linear-gradient(245deg, rgba(59, 132, 111, 0.18), transparent 52%),
           repeating-linear-gradient(
             115deg,
-            rgba(255, 255, 255, 0.32) 0,
-            rgba(255, 255, 255, 0.32) 1px,
+            rgba(39, 59, 67, 0.055) 0,
+            rgba(39, 59, 67, 0.055) 1px,
             transparent 1px,
-            transparent 26px
+            transparent 24px
           );
         background-attachment: fixed;
       }
@@ -69,10 +86,17 @@ export function renderIndexPage(): string {
         color: inherit;
       }
 
+      .liquid {
+        border: 1px solid var(--liquid-border);
+        background: var(--liquid-bg);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
+      }
+
       .shell {
-        width: min(1160px, calc(100% - 28px));
+        width: min(1480px, calc(100% - 28px));
         margin: 0 auto;
-        padding: 22px 0 42px;
+        padding: 18px 0 42px;
       }
 
       .hidden {
@@ -90,13 +114,11 @@ export function renderIndexPage(): string {
 
       .auth-card {
         width: 100%;
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.56)),
-          var(--glass);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(28px) saturate(168%);
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: var(--liquid-bg-strong);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
         padding: 30px;
       }
 
@@ -137,9 +159,9 @@ export function renderIndexPage(): string {
         width: 100%;
         min-height: 48px;
         border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.76);
-        color: var(--text);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.62);
+        color: var(--ink);
         outline: 0;
         padding: 11px 14px;
         transition:
@@ -149,9 +171,9 @@ export function renderIndexPage(): string {
       }
 
       .auth-input:focus {
-        border-color: rgba(77, 127, 203, 0.62);
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 0 0 5px rgba(77, 127, 203, 0.13);
+        border-color: rgba(61, 111, 146, 0.62);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 0 0 5px rgba(61, 111, 146, 0.13);
       }
 
       .auth-card .actions {
@@ -172,13 +194,11 @@ export function renderIndexPage(): string {
         grid-template-columns: minmax(0, 1fr) auto;
         gap: 14px;
         align-items: center;
-        border: 1px solid var(--line);
-        border-radius: 22px;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 255, 255, 0.58)),
-          var(--glass);
-        box-shadow: var(--shadow);
-        backdrop-filter: blur(28px) saturate(165%);
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: var(--liquid-bg);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
         padding: 15px;
       }
 
@@ -230,11 +250,11 @@ export function renderIndexPage(): string {
         justify-content: center;
         gap: 8px;
         white-space: nowrap;
-        border-radius: 14px;
+        border-radius: var(--radius-md);
         padding: 9px 14px;
         color: #fff;
         background: linear-gradient(180deg, var(--blue), var(--blue-deep));
-        box-shadow: 0 13px 26px rgba(77, 127, 203, 0.24);
+        box-shadow: 0 12px 24px rgba(61, 111, 146, 0.24);
         font-weight: 800;
         text-decoration: none;
         overflow: hidden;
@@ -246,20 +266,20 @@ export function renderIndexPage(): string {
       }
 
       .btn.secondary {
-        color: var(--text);
+        color: var(--ink);
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.72);
-        box-shadow: 0 8px 18px rgba(35, 49, 73, 0.06);
+        background: rgba(255, 255, 255, 0.58);
+        box-shadow: 0 8px 18px rgba(33, 36, 32, 0.06);
       }
 
       .btn.green {
-        background: linear-gradient(180deg, #46a896, var(--green));
-        box-shadow: 0 12px 22px rgba(45, 138, 125, 0.18);
+        background: linear-gradient(180deg, var(--green), var(--green-deep));
+        box-shadow: 0 12px 22px rgba(66, 120, 95, 0.2);
       }
 
       .btn.small {
         min-height: 36px;
-        border-radius: 10px;
+        border-radius: var(--radius-md);
         padding: 7px 11px;
         font-size: 13px;
       }
@@ -287,13 +307,13 @@ export function renderIndexPage(): string {
       }
 
       .btn.secondary:hover {
-        border-color: rgba(77, 127, 203, 0.32);
+        border-color: rgba(61, 111, 146, 0.32);
         box-shadow: var(--shadow-soft);
       }
 
       .btn.disabled {
         color: var(--muted);
-        background: rgba(238, 241, 245, 0.86);
+        background: rgba(232, 228, 219, 0.86);
         box-shadow: none;
         cursor: not-allowed;
       }
@@ -315,17 +335,17 @@ export function renderIndexPage(): string {
 
       .summary {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(150px, 1fr));
         gap: 12px;
         margin: 16px 0;
       }
 
       .stat {
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.62);
-        backdrop-filter: blur(22px) saturate(150%);
-        box-shadow: 0 10px 24px rgba(35, 49, 73, 0.07);
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: var(--liquid-bg);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(165%);
+        box-shadow: var(--liquid-shadow-soft);
         padding: 14px;
       }
 
@@ -333,7 +353,7 @@ export function renderIndexPage(): string {
         display: block;
         font-size: 26px;
         line-height: 1;
-        color: #20385e;
+        color: #263f37;
       }
 
       .stat span {
@@ -356,7 +376,7 @@ export function renderIndexPage(): string {
 
       .stat.source strong.cache,
       .stat.source strong.seed {
-        color: var(--amber);
+        color: var(--gold);
       }
 
       .stat.source strong.empty {
@@ -366,11 +386,11 @@ export function renderIndexPage(): string {
       .controls {
         display: grid;
         gap: 12px;
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        background: rgba(255, 255, 255, 0.6);
-        backdrop-filter: blur(22px) saturate(150%);
-        box-shadow: 0 10px 28px rgba(35, 49, 73, 0.08);
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: var(--liquid-bg);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
+        box-shadow: var(--liquid-shadow);
         padding: 14px;
         margin-bottom: 14px;
       }
@@ -391,9 +411,9 @@ export function renderIndexPage(): string {
         min-height: 44px;
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.74);
-        color: var(--text);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.58);
+        color: var(--ink);
         outline: 0;
         padding: 10px 14px;
         transition:
@@ -403,15 +423,15 @@ export function renderIndexPage(): string {
       }
 
       .search:focus {
-        border-color: rgba(77, 127, 203, 0.58);
-        background: rgba(255, 255, 255, 0.92);
-        box-shadow: 0 0 0 5px rgba(77, 127, 203, 0.12);
+        border-color: rgba(61, 111, 146, 0.58);
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 0 0 5px rgba(61, 111, 146, 0.12);
       }
 
       .btn.active {
         color: #fff;
-        background: linear-gradient(180deg, #46a896, var(--green));
-        box-shadow: 0 12px 22px rgba(45, 138, 125, 0.18);
+        background: linear-gradient(180deg, var(--green), var(--green-deep));
+        box-shadow: 0 12px 22px rgba(66, 120, 95, 0.2);
       }
 
       .filter-groups {
@@ -438,23 +458,26 @@ export function renderIndexPage(): string {
       }
 
       .checks {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
         gap: 8px;
       }
 
       .check {
+        position: relative;
         min-height: 34px;
         display: inline-flex;
         align-items: center;
-        gap: 7px;
+        justify-content: center;
         border: 1px solid var(--line);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.64);
-        color: var(--text);
+        border-radius: var(--radius-pill);
+        background: rgba(255, 255, 255, 0.46);
+        color: var(--ink);
         padding: 6px 10px;
         font-size: 13px;
         font-weight: 760;
+        text-align: center;
+        overflow: hidden;
         transition:
           transform 0.18s ease,
           border-color 0.18s ease,
@@ -464,35 +487,79 @@ export function renderIndexPage(): string {
 
       .check:hover {
         transform: translateY(-1px);
-        border-color: rgba(77, 127, 203, 0.34);
+        border-color: rgba(61, 111, 146, 0.34);
+      }
+
+      .check::before {
+        content: "";
+        position: absolute;
+        inset: -1px;
+        z-index: 0;
+        opacity: 0;
+        background: linear-gradient(
+          105deg,
+          rgba(33, 99, 79, 0.98) 0%,
+          rgba(61, 120, 157, 0.96) 28%,
+          rgba(185, 133, 48, 0.94) 48%,
+          rgba(61, 120, 157, 0.96) 68%,
+          rgba(33, 99, 79, 0.98) 100%
+        );
+        background-size: 240% 100%;
+        transition: opacity 0.18s ease;
+      }
+
+      .check span {
+        position: relative;
+        z-index: 1;
       }
 
       .check:has(input:checked) {
-        border-color: rgba(45, 138, 125, 0.38);
-        background: rgba(223, 243, 237, 0.78);
-        color: #17685d;
+        border-color: rgba(36, 90, 69, 0.5);
+        background: rgba(33, 99, 79, 0.86);
+        color: #fff;
+        box-shadow: 0 10px 22px rgba(36, 90, 69, 0.16);
+      }
+
+      .check:has(input:checked)::before {
+        opacity: 1;
+        animation: selectedSheen 2.2s linear infinite;
+      }
+
+      .check:focus-within {
+        border-color: rgba(61, 111, 146, 0.55);
+        box-shadow: 0 0 0 4px rgba(61, 111, 146, 0.12);
       }
 
       .check input {
-        width: 15px;
-        height: 15px;
-        accent-color: var(--blue);
+        position: absolute;
+        inset: 0;
+        z-index: 2;
+        opacity: 0;
+        cursor: pointer;
+      }
+
+      @keyframes selectedSheen {
+        to {
+          background-position: -220% 0;
+        }
       }
 
       .list {
         display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+        grid-auto-rows: 206px;
         gap: 12px;
+        align-items: stretch;
       }
 
       .item {
         position: relative;
-        border: 1px solid var(--line);
-        border-radius: 20px;
-        background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.52)),
-          var(--glass);
-        box-shadow: 0 12px 34px rgba(35, 49, 73, 0.1);
-        backdrop-filter: blur(24px) saturate(150%);
+        height: 206px;
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: var(--liquid-bg);
+        box-shadow: var(--liquid-shadow-soft);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(165%);
         overflow: hidden;
         animation: rise 0.36s ease both;
         transition:
@@ -503,8 +570,8 @@ export function renderIndexPage(): string {
 
       .item:hover {
         transform: translateY(-2px);
-        border-color: rgba(77, 127, 203, 0.22);
-        box-shadow: 0 18px 42px rgba(35, 49, 73, 0.13);
+        border-color: rgba(61, 111, 146, 0.26);
+        box-shadow: 0 18px 38px rgba(33, 36, 32, 0.13);
       }
 
       @keyframes rise {
@@ -520,18 +587,24 @@ export function renderIndexPage(): string {
 
       .item-main {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 14px;
-        align-items: center;
+        height: 100%;
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: stretch;
         padding: 16px;
       }
 
       .font-name {
         margin: 0;
-        font-size: 16px;
+        font-size: 17px;
         font-weight: 820;
         line-height: 1.35;
         overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
 
       .url {
@@ -540,6 +613,10 @@ export function renderIndexPage(): string {
         font-size: 12px;
         line-height: 1.45;
         overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
       }
 
       .tags {
@@ -547,35 +624,31 @@ export function renderIndexPage(): string {
         flex-wrap: wrap;
         gap: 6px;
         margin-top: 8px;
+        max-height: 30px;
+        overflow: hidden;
       }
 
       .tag {
         min-height: 24px;
         display: inline-flex;
         align-items: center;
-        border: 1px solid rgba(77, 127, 203, 0.16);
-        border-radius: 999px;
-        background: rgba(234, 241, 255, 0.7);
+        border: 1px solid rgba(61, 111, 146, 0.18);
+        border-radius: var(--radius-pill);
+        background: rgba(255, 255, 255, 0.48);
         color: var(--blue-deep);
         font-size: 12px;
         font-weight: 800;
         padding: 3px 8px;
       }
 
-      .result {
-        border-top: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.44);
-        padding: 0 16px 16px;
-      }
-
       .progress-wrap {
-        padding: 16px 0 0;
+        padding: 0;
       }
 
       .progress {
         height: 8px;
-        border-radius: 999px;
-        background: rgba(103, 121, 145, 0.2);
+        border-radius: var(--radius-pill);
+        background: rgba(105, 114, 110, 0.2);
         overflow: hidden;
       }
 
@@ -584,7 +657,7 @@ export function renderIndexPage(): string {
         width: 42%;
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(90deg, var(--blue), var(--green), var(--rose));
+        background: linear-gradient(90deg, var(--blue), var(--green), var(--gold));
         animation: loading 1.08s ease-in-out infinite alternate;
       }
 
@@ -597,74 +670,168 @@ export function renderIndexPage(): string {
         }
       }
 
-      .result-head {
+      .item-actions {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 12px;
-        align-items: center;
-        min-height: 52px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        align-items: stretch;
+        min-height: 80px;
+      }
+
+      .item-status {
+        min-width: 0;
+        grid-column: 1 / -1;
+      }
+
+      .item-actions .btn {
+        width: 100%;
+        min-height: 38px;
+      }
+
+      .item-actions .btn.only {
+        grid-column: 1 / -1;
+        align-self: end;
       }
 
       .badge {
         display: inline-flex;
         align-items: center;
-        width: fit-content;
+        width: 100%;
         min-height: 28px;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         padding: 5px 10px;
-        color: var(--amber);
+        color: var(--gold);
         background: rgba(255, 241, 214, 0.9);
         font-size: 12px;
         font-weight: 800;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
 
       .badge.ok {
         color: var(--green);
-        background: rgba(224, 247, 235, 0.9);
+        background: rgba(228, 242, 233, 0.92);
       }
 
       .badge.err {
         color: var(--red);
-        background: rgba(255, 229, 229, 0.9);
+        background: rgba(255, 229, 224, 0.9);
+      }
+
+      .file-popover {
+        position: fixed;
+        z-index: 30;
+        width: min(500px, calc(100vw - 28px));
+        max-height: min(520px, calc(100vh - 28px));
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        gap: 10px;
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: rgba(255, 255, 255, 0.14);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(175%);
+        padding: 12px;
+        overflow: hidden;
+        opacity: 0;
+        transform: translateY(6px) scale(0.98);
+        pointer-events: none;
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+
+      .file-popover.open {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+      }
+
+      .file-popover-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .file-popover-title {
+        min-width: 0;
+      }
+
+      .file-popover-title strong {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.35;
+      }
+
+      .file-popover-title span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .file-popover-close {
+        width: 34px;
+        height: 34px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.48);
+        color: var(--ink);
+        font-size: 18px;
+        font-weight: 900;
+        line-height: 1;
       }
 
       .files {
+        min-height: 0;
         display: grid;
-        gap: 8px;
-        overflow: hidden;
-        transition:
-          max-height 0.28s ease,
-          opacity 0.22s ease;
-      }
-
-      .files.closed {
-        max-height: 0;
-        opacity: 0;
-      }
-
-      .files.open {
-        max-height: 1600px;
-        opacity: 1;
+        align-content: start;
+        gap: 12px;
+        overflow: auto;
+        padding-right: 2px;
       }
 
       .file-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 92px 100px auto;
-        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) 92px;
+        gap: 14px;
         align-items: center;
-        min-height: 44px;
+        min-height: 64px;
         border: 1px solid var(--line);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.58);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.48);
         color: var(--muted);
         font-size: 13px;
-        padding: 8px 9px;
+        padding: 12px;
+      }
+
+      .file-row .btn {
+        width: 92px;
+        min-height: 40px;
+        border-radius: var(--radius-md);
+        justify-self: end;
       }
 
       .file-name {
-        color: var(--text);
+        color: var(--ink);
         font-weight: 750;
         overflow-wrap: anywhere;
+      }
+
+      .file-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
       }
 
       .empty {
@@ -672,9 +839,9 @@ export function renderIndexPage(): string {
         display: grid;
         place-items: center;
         border: 1px dashed var(--line-strong);
-        border-radius: 20px;
+        border-radius: var(--radius-lg);
         color: var(--muted);
-        background: rgba(255, 255, 255, 0.5);
+        background: rgba(255, 255, 255, 0.44);
         backdrop-filter: blur(18px) saturate(145%);
         text-align: center;
         padding: 28px;
@@ -687,9 +854,9 @@ export function renderIndexPage(): string {
         top: 22px;
         z-index: 20;
         transform: translateX(-50%);
-        border: 1px solid rgba(45, 138, 125, 0.25);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(66, 120, 95, 0.25);
+        border-radius: var(--radius-pill);
+        background: rgba(255, 255, 255, 0.72);
         backdrop-filter: blur(18px);
         box-shadow: var(--shadow);
         color: var(--green);
@@ -701,14 +868,14 @@ export function renderIndexPage(): string {
 
       .to-top {
         position: fixed;
-        right: max(18px, calc((100vw - 1160px) / 2 + 18px));
+        right: max(18px, calc((100vw - 1480px) / 2 + 18px));
         bottom: 22px;
         z-index: 12;
         width: 48px;
         height: 48px;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.76);
+        background: rgba(255, 255, 255, 0.64);
         backdrop-filter: blur(18px) saturate(145%);
         box-shadow: var(--shadow-soft);
         color: var(--blue-deep);
@@ -775,11 +942,19 @@ export function renderIndexPage(): string {
         }
 
         .topbar,
-        .summary,
         .controls,
         .search-row,
         .filter-groups {
           grid-template-columns: 1fr;
+        }
+
+        .summary,
+        .list {
+          grid-template-columns: 1fr;
+        }
+
+        .list {
+          grid-auto-rows: 206px;
         }
 
         .actions,
@@ -792,14 +967,21 @@ export function renderIndexPage(): string {
           width: 100%;
         }
 
-        .item-main,
-        .result-head,
         .file-row {
           grid-template-columns: 1fr;
         }
 
         .file-row .btn {
-          width: fit-content;
+          width: 100%;
+        }
+
+        .file-popover {
+          left: 10px !important;
+          right: 10px;
+          top: auto !important;
+          bottom: 10px;
+          width: auto;
+          max-height: min(68vh, 560px);
         }
 
         .to-top {
@@ -815,9 +997,28 @@ export function renderIndexPage(): string {
     </style>
   </head>
   <body>
+    <svg width="0" height="0" aria-hidden="true" focusable="false">
+      <filter id="liquid_glass_filter">
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.018 0.036"
+          numOctaves="2"
+          seed="8"
+          result="noise"
+        />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="noise"
+          scale="12"
+          xChannelSelector="R"
+          yChannelSelector="G"
+        />
+      </filter>
+    </svg>
+
     <section class="auth-shell" id="authPanel">
       <div class="auth-card">
-        <h1>字体蓝奏下载台</h1>
+        <h1>${siteName}</h1>
         <p class="auth-status" id="authStatus">请输入口令进入</p>
         <div class="auth-fields">
           <label for="homePasscode">访问口令</label>
@@ -838,7 +1039,7 @@ export function renderIndexPage(): string {
     <div class="shell app-shell hidden" id="appShell">
       <header class="topbar">
         <div>
-          <h1>字体蓝奏下载台</h1>
+          <h1>${siteName}</h1>
           <div class="subline">
             <span class="dot" id="statusDot"></span>
             <span id="statusText">待同步</span>
@@ -940,6 +1141,14 @@ export function renderIndexPage(): string {
       ↑
     </button>
 
+    <div
+      class="file-popover"
+      id="filePopover"
+      role="dialog"
+      aria-modal="false"
+      aria-hidden="true"
+    ></div>
+
     <footer class="icp-footer">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
         苏ICP备2021038338号-1
@@ -951,7 +1160,10 @@ export function renderIndexPage(): string {
         items: [],
         parsed: {},
         loadingIds: {},
-        openIds: {},
+        floatingFiles: {
+          itemId: '',
+          anchor: null,
+        },
         filterParsed: false,
         familyFilters: [],
         weightFilters: [],
@@ -985,6 +1197,7 @@ export function renderIndexPage(): string {
         sourceName: document.getElementById('sourceName'),
         sourceDetail: document.getElementById('sourceDetail'),
         fontList: document.getElementById('fontList'),
+        filePopover: document.getElementById('filePopover'),
         filterInputs: document.querySelectorAll('[data-filter-group]'),
       };
 
@@ -1050,6 +1263,97 @@ export function renderIndexPage(): string {
           escapeHtml(file.error || '未获取到下载地址') +
           '">解析失败</span>'
         );
+      }
+
+      function closeFilePopover() {
+        state.floatingFiles.itemId = '';
+        state.floatingFiles.anchor = null;
+        els.filePopover.classList.remove('open');
+        els.filePopover.setAttribute('aria-hidden', 'true');
+      }
+
+      function findFileToggle(id) {
+        return Array.prototype.find.call(
+          document.querySelectorAll('[data-toggle-id]'),
+          function (button) {
+            return button.getAttribute('data-toggle-id') === id;
+          },
+        );
+      }
+
+      function renderFileRows(files) {
+        return files
+          .map(function (file) {
+            return (
+              '<div class="file-row">' +
+              '<div>' +
+              '<div class="file-name">' +
+              escapeHtml(file.name || '未命名文件') +
+              '</div>' +
+              '<div class="file-meta"><span>' +
+              escapeHtml(file.size || '-') +
+              '</span><span>' +
+              escapeHtml(file.date || '-') +
+              '</span></div>' +
+              '</div>' +
+              renderDownloadButton(file) +
+              '</div>'
+            );
+          })
+          .join('');
+      }
+
+      function positionFilePopover(anchor) {
+        if (!anchor || !els.filePopover.classList.contains('open')) return;
+
+        var gap = 10;
+        var rect = anchor.getBoundingClientRect();
+        var popoverRect = els.filePopover.getBoundingClientRect();
+
+        if (window.innerWidth <= 820) {
+          return;
+        }
+
+        var left = rect.right + gap;
+        if (left + popoverRect.width > window.innerWidth - gap) {
+          left = rect.left - popoverRect.width - gap;
+        }
+        left = Math.max(gap, Math.min(left, window.innerWidth - popoverRect.width - gap));
+
+        var top = rect.top + rect.height / 2 - popoverRect.height / 2;
+        top = Math.max(gap, Math.min(top, window.innerHeight - popoverRect.height - gap));
+
+        els.filePopover.style.left = left + 'px';
+        els.filePopover.style.top = top + 'px';
+      }
+
+      function showFilePopover(id, anchor) {
+        var item = state.items.find(function (entry) {
+          return entry.id === id;
+        });
+        var parsed = state.parsed[id];
+        if (!item || !parsed || !Array.isArray(parsed.files)) return;
+
+        state.floatingFiles.itemId = id;
+        state.floatingFiles.anchor = anchor;
+        els.filePopover.innerHTML =
+          '<div class="file-popover-head">' +
+          '<div class="file-popover-title"><strong>' +
+          escapeHtml(item.fontName || '未命名字体') +
+          '</strong><span>' +
+          escapeHtml(parsed.fromParsedCache ? '已缓存解析' : '本次解析') +
+          ' · ' +
+          parsed.files.length +
+          ' 个文件</span></div>' +
+          '<button class="file-popover-close" data-close-files type="button" aria-label="关闭文件列表">×</button>' +
+          '</div><div class="files">' +
+          renderFileRows(parsed.files) +
+          '</div>';
+        els.filePopover.classList.add('open');
+        els.filePopover.setAttribute('aria-hidden', 'false');
+        requestAnimationFrame(function () {
+          positionFilePopover(anchor);
+        });
       }
 
       function formatTime(value) {
@@ -1154,13 +1458,28 @@ export function renderIndexPage(): string {
         );
       }
 
+      function applyParsedCache(parsedCache) {
+        var cache = parsedCache || {};
+        state.items.forEach(function (item) {
+          var entry = cache[item.id];
+          if (!entry || !Array.isArray(entry.files)) return;
+
+          state.parsed[item.id] = {
+            files: entry.files,
+            parsedAt: entry.parsedAt || '',
+            fromParsedCache: true,
+          };
+        });
+      }
+
       function applyFontData(data) {
         state.items = data.items || [];
         state.parsed = {};
         state.loadingIds = {};
-        state.openIds = {};
+        closeFilePopover();
         state.filterParsed = false;
         state.source = sourceInfoForData(data);
+        applyParsedCache(data.parsedCache);
         render();
       }
 
@@ -1242,12 +1561,14 @@ export function renderIndexPage(): string {
         updateStats(items.length);
 
         if (state.items.length === 0) {
+          closeFilePopover();
           els.fontList.innerHTML =
             '<div class="empty">点击“同步文档”获取字体列表</div>';
           return;
         }
 
         if (items.length === 0) {
+          closeFilePopover();
           els.fontList.innerHTML =
             '<div class="empty">没有符合条件的字体条目</div>';
           return;
@@ -1257,7 +1578,6 @@ export function renderIndexPage(): string {
           .map(function (item, index) {
             var parsed = state.parsed[item.id];
             var loading = state.loadingIds[item.id];
-            var isOpen = state.openIds[item.id] !== false;
             var tags = fontTags(item.fontName || '');
             var tagsHtml = tags.length
               ? '<div class="tags">' +
@@ -1268,52 +1588,42 @@ export function renderIndexPage(): string {
                   .join('') +
                 '</div>'
               : '';
-            var resultHtml = '';
+            var actionHtml = '';
 
             if (loading) {
-              resultHtml =
-                '<div class="result"><div class="progress-wrap"><div class="progress"><span></span></div></div></div>';
+              actionHtml =
+                '<div class="item-status"><div class="progress-wrap"><div class="progress"><span></span></div></div></div>';
             } else if (parsed && parsed.error) {
-              resultHtml =
-                '<div class="result"><div class="result-head"><span class="badge err">' +
+              actionHtml =
+                '<div class="item-status"><span class="badge err" title="' +
                 escapeHtml(parsed.error) +
-                '</span></div></div>';
+                '">' +
+                escapeHtml(parsed.error) +
+                '</span></div>' +
+                '<button class="btn small only" data-parse-id="' +
+                escapeHtml(item.id) +
+                '" type="button">重新解析</button>';
             } else if (parsed && parsed.files) {
               var files = parsed.files || [];
-              resultHtml =
-                '<div class="result">' +
-                '<div class="result-head">' +
-                '<span class="badge ok">已解析 ' +
+              var parsedLabel = parsed.fromParsedCache ? '已缓存解析 ' : '已解析 ';
+              actionHtml =
+                '<div class="item-status"><span class="badge ok">' +
+                parsedLabel +
                 files.length +
-                ' 个文件</span>' +
+                ' 个文件</span></div>' +
                 '<button class="btn secondary small" data-toggle-id="' +
                 escapeHtml(item.id) +
                 '" type="button">' +
-                (isOpen ? '折叠列表' : '展开列表') +
+                (state.floatingFiles.itemId === item.id ? '隐藏文件' : '查看文件') +
                 '</button>' +
-                '</div>' +
-                '<div class="files ' +
-                (isOpen ? 'open' : 'closed') +
-                '">' +
-                files
-                  .map(function (file) {
-                    return (
-                      '<div class="file-row">' +
-                      '<div class="file-name">' +
-                      escapeHtml(file.name || '未命名文件') +
-                      '</div>' +
-                      '<div>' +
-                      escapeHtml(file.size || '-') +
-                      '</div>' +
-                      '<div>' +
-                      escapeHtml(file.date || '-') +
-                      '</div>' +
-                      renderDownloadButton(file) +
-                      '</div>'
-                    );
-                  })
-                  .join('') +
-                '</div></div>';
+                '<button class="btn small" data-parse-id="' +
+                escapeHtml(item.id) +
+                '" type="button">重新解析</button>';
+            } else {
+              actionHtml =
+                '<button class="btn small only" data-parse-id="' +
+                escapeHtml(item.id) +
+                '" type="button">解析下载</button>';
             }
 
             return (
@@ -1330,15 +1640,10 @@ export function renderIndexPage(): string {
               escapeHtml(item.lanzouUrl) +
               '</div>' +
               '</div>' +
-              '<button class="btn small" data-parse-id="' +
-              escapeHtml(item.id) +
-              '" type="button"' +
-              (loading ? ' disabled' : '') +
-              '>' +
-              (parsed && parsed.files ? '重新解析' : '解析下载') +
-              '</button>' +
+              '<div class="item-actions">' +
+              actionHtml +
               '</div>' +
-              resultHtml +
+              '</div>' +
               '</article>'
             );
           })
@@ -1446,18 +1751,35 @@ export function renderIndexPage(): string {
         render();
         try {
           var data = await postJson('/api/lanzou/parse', {
+            itemId: item.id,
+            fontName: item.fontName,
             url: item.lanzouUrl,
           });
-          state.parsed[id] = { files: data.files || [] };
-          state.openIds[id] = true;
-          setStatus('解析成功：' + item.fontName, 'ok');
+          state.parsed[id] = {
+            files: data.files || [],
+            parsedAt: data.parsedAt || '',
+            fromParsedCache: false,
+          };
+          if (data.parsedCacheError) {
+            setStatus(
+              '解析成功，但服务端缓存写入失败：' + data.parsedCacheError,
+              'err',
+            );
+          } else {
+            setStatus('解析成功：' + item.fontName, 'ok');
+          }
           showBurst('解析完成');
         } catch (error) {
+          closeFilePopover();
           state.parsed[id] = { error: error.message };
           setStatus(error.message, 'err');
         } finally {
           delete state.loadingIds[id];
           render();
+          var anchor = findFileToggle(id);
+          if (anchor && state.parsed[id] && state.parsed[id].files) {
+            showFilePopover(id, anchor);
+          }
         }
       }
 
@@ -1496,7 +1818,7 @@ export function renderIndexPage(): string {
         state.items = [];
         state.parsed = {};
         state.loadingIds = {};
-        state.openIds = {};
+        closeFilePopover();
         state.source = emptySourceInfo();
         render();
         setStatus(
@@ -1528,10 +1850,12 @@ export function renderIndexPage(): string {
       els.syncBtn.addEventListener('click', syncFonts);
       els.searchInput.addEventListener('input', function () {
         state.searchQuery = els.searchInput.value;
+        closeFilePopover();
         render();
       });
       els.parsedFilterBtn.addEventListener('click', function () {
         state.filterParsed = !state.filterParsed;
+        closeFilePopover();
         render();
       });
       els.clearFiltersBtn.addEventListener('click', function () {
@@ -1543,11 +1867,13 @@ export function renderIndexPage(): string {
         els.filterInputs.forEach(function (input) {
           input.checked = false;
         });
+        closeFilePopover();
         render();
       });
       els.filterInputs.forEach(function (input) {
         input.addEventListener('change', function () {
           syncFilterState();
+          closeFilePopover();
           render();
         });
       });
@@ -1574,7 +1900,11 @@ export function renderIndexPage(): string {
       });
       window.addEventListener('scroll', function () {
         els.topButton.classList.toggle('visible', window.scrollY > 420);
+        if (state.floatingFiles.anchor) {
+          positionFilePopover(state.floatingFiles.anchor);
+        }
       });
+      window.addEventListener('resize', closeFilePopover);
       els.fontList.addEventListener('click', function (event) {
         var parseButton = event.target.closest('[data-parse-id]');
         if (parseButton) {
@@ -1585,7 +1915,35 @@ export function renderIndexPage(): string {
         var toggleButton = event.target.closest('[data-toggle-id]');
         if (toggleButton) {
           var id = toggleButton.getAttribute('data-toggle-id');
-          state.openIds[id] = state.openIds[id] === false;
+          if (state.floatingFiles.itemId === id) {
+            closeFilePopover();
+            render();
+          } else {
+            state.floatingFiles.itemId = id;
+            render();
+            var nextAnchor = findFileToggle(id);
+            if (nextAnchor) {
+              showFilePopover(id, nextAnchor);
+            }
+          }
+        }
+      });
+      els.filePopover.addEventListener('click', function (event) {
+        if (event.target.closest('[data-close-files]')) {
+          closeFilePopover();
+          render();
+        }
+      });
+      document.addEventListener('click', function (event) {
+        if (!state.floatingFiles.itemId) return;
+        if (els.filePopover.contains(event.target)) return;
+        if (event.target.closest('[data-toggle-id]')) return;
+        closeFilePopover();
+        render();
+      });
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          closeFilePopover();
           render();
         }
       });

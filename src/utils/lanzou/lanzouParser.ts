@@ -4,9 +4,9 @@ import type {
   ParseFileItem,
   ParseResult,
   ParseSuccessData,
-} from '../types.js';
-import { createLanzouClient, getHeaders } from './lanzouHttpClient.js';
-import * as cheerio from 'cheerio';
+} from "../types.js";
+import { createLanzouClient, getHeaders } from "./lanzouHttpClient.js";
+import * as cheerio from "cheerio";
 
 interface LanzouUrlCandidate {
   baseUrl: string;
@@ -37,11 +37,11 @@ async function parseLanzouUrl(params: {
   n?: string;
 }): Promise<ParseResult> {
   const { url, pwd, type, n: rename } = params;
-  if (!url) return { code: 1, msg: '请输入URL' };
+  if (!url) return { code: 1, msg: "请输入URL" };
 
   const candidates = buildUrlCandidates(url);
   if (candidates.length === 0) {
-    return { code: 1, msg: '请输入正确的蓝奏云分享链接' };
+    return { code: 1, msg: "请输入正确的蓝奏云分享链接" };
   }
 
   // 为每次解析创建新的客户端实例（隔离 Cookie）
@@ -60,11 +60,11 @@ async function parseLanzouUrl(params: {
       });
 
       if (!firstResponse.data) {
-        lastError = { code: 1, msg: '页面无内容' };
+        lastError = { code: 1, msg: "页面无内容" };
         continue;
       }
-      if (firstResponse.data.includes('文件取消分享了')) {
-        lastError = { code: 1, msg: '文件取消分享了' };
+      if (firstResponse.data.includes("文件取消分享了")) {
+        lastError = { code: 1, msg: "文件取消分享了" };
         continue;
       }
 
@@ -73,7 +73,7 @@ async function parseLanzouUrl(params: {
       let fileName = extractFileName($);
       const fileSize = extractFileSize($);
 
-      if (firstResponse.data.includes('filemoreajax.php')) {
+      if (firstResponse.data.includes("filemoreajax.php")) {
         return await parseFolderPage(client, firstResponse.data, {
           baseUrl,
           inputUrl,
@@ -82,17 +82,17 @@ async function parseLanzouUrl(params: {
       }
 
       // Step 2: 需要密码
-      if (firstResponse.data.includes('function down_p()')) {
-        if (!pwd) return { code: 1, msg: '请输入分享密码' };
+      if (firstResponse.data.includes("function down_p()")) {
+        if (!pwd) return { code: 1, msg: "请输入分享密码" };
 
-        const cleanCode = firstResponse.data.replace(/\/\*[\s\S]*?\*\//g, '');
+        const cleanCode = firstResponse.data.replace(/\/\*[\s\S]*?\*\//g, "");
         const sign = matchOne(cleanCode, /'sign':'(.*?)',/);
         const fileId = matchOne(
           cleanCode,
           /url\s*:\s*'\/ajaxm\.php\?file=(\d+)(?=[^/]*')/,
         );
         if (!sign || !fileId) {
-          lastError = { code: 1, msg: '获取文件标识失败' };
+          lastError = { code: 1, msg: "获取文件标识失败" };
           continue;
         }
 
@@ -102,7 +102,7 @@ async function parseLanzouUrl(params: {
           baseUrl,
           fileId,
           {
-            action: 'downprocess',
+            action: "downprocess",
             sign,
             p: pwd,
             kd: 1,
@@ -110,7 +110,7 @@ async function parseLanzouUrl(params: {
         );
 
         if (postResult.zt !== 1) {
-          lastError = { code: 1, msg: postResult.inf || '解析失败' };
+          lastError = { code: 1, msg: postResult.inf || "解析失败" };
           continue;
         }
 
@@ -118,15 +118,15 @@ async function parseLanzouUrl(params: {
         return await handleFinalUrl(client, postResult, {
           fileName,
           fileSize,
-          rename: rename || '',
-          type: type || 'json',
+          rename: rename || "",
+          type: type || "json",
         });
       }
 
       // Step 3: 无密码
-      const iframeSrc = $('iframe').attr('src');
+      const iframeSrc = $("iframe").attr("src");
       if (!iframeSrc) {
-        lastError = { code: 1, msg: '无法解析下载页面' };
+        lastError = { code: 1, msg: "无法解析下载页面" };
         continue;
       }
       const iframeUrl = new URL(iframeSrc, baseUrl).toString();
@@ -138,11 +138,11 @@ async function parseLanzouUrl(params: {
       const signs = matchOne(iframeResponse.data, /ajaxdata = '(.*?)'/);
       const sign = matchOne(iframeResponse.data, /wp_sign = '(.*?)'/);
       const fileId = matchOne(
-        iframeResponse.data.replace(`//url : '/ajaxm.php?file=1',//`, ''),
+        iframeResponse.data.replace(`//url : '/ajaxm.php?file=1',//`, ""),
         /url\s*:\s*'\/ajaxm\.php\?file=(\d+)(?=[^/]*')/,
       );
       if (!sign || !fileId || !signs) {
-        lastError = { code: 1, msg: '获取文件标识失败' };
+        lastError = { code: 1, msg: "获取文件标识失败" };
         continue;
       }
 
@@ -152,39 +152,39 @@ async function parseLanzouUrl(params: {
         iframeSrc,
         fileId,
         {
-          action: 'downprocess',
+          action: "downprocess",
           websignkey: signs,
           signs,
           sign,
-          websign: '',
+          websign: "",
           kd: 1,
           ves: 1,
         },
       );
 
       if (postResult.zt !== 1) {
-        lastError = { code: 1, msg: postResult.inf || '解析失败' };
+        lastError = { code: 1, msg: postResult.inf || "解析失败" };
         continue;
       }
 
       return await handleFinalUrl(client, postResult, {
         fileName,
         fileSize,
-        rename: rename || '',
-        type: type || 'json',
+        rename: rename || "",
+        type: type || "json",
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      console.log('解析失败:', message);
+      console.log("解析失败:", message);
       lastError = {
         code: 1,
-        msg: '解析异常',
+        msg: "解析异常",
         error: message,
       };
       continue;
     }
   }
-  return lastError || { code: 1, msg: '解析失败' };
+  return lastError || { code: 1, msg: "解析失败" };
 }
 
 async function parseFolderPage(
@@ -196,15 +196,15 @@ async function parseFolderPage(
     pwd,
   }: { baseUrl: string; inputUrl: string; pwd?: string },
 ): Promise<ParseResult> {
-  if (html.includes('pwdload') && !pwd) {
-    return { code: 1, msg: '请输入分享密码' };
+  if (html.includes("pwdload") && !pwd) {
+    return { code: 1, msg: "请输入分享密码" };
   }
 
   const postPath = matchOne(
     html,
     /url\s*:\s*['"]([^'"]*\/filemoreajax\.php\?file=\d+)['"]/,
   );
-  if (!postPath) return { code: 1, msg: '无法解析文件夹列表接口' };
+  if (!postPath) return { code: 1, msg: "无法解析文件夹列表接口" };
 
   const items: FolderAjaxItem[] = [];
   for (let page = 1; page <= 20; page++) {
@@ -213,17 +213,17 @@ async function parseFolderPage(
       inputUrl,
       page,
       postPath,
-      pwd: pwd || '',
+      pwd: pwd || "",
     });
 
     const zt = Number(response.zt);
-    if (zt === 3) return { code: 1, msg: response.info || '分享密码错误' };
+    if (zt === 3) return { code: 1, msg: response.info || "分享密码错误" };
     if (zt === 2) break;
     if (zt !== 1)
-      return { code: 1, msg: response.info || '获取文件夹列表失败' };
+      return { code: 1, msg: response.info || "获取文件夹列表失败" };
 
     const pageItems = Array.isArray(response.text) ? response.text : [];
-    items.push(...pageItems.filter((item) => item.id && item.id !== '-1'));
+    items.push(...pageItems.filter((item) => item.id && item.id !== "-1"));
     if (pageItems.length < 50) break;
   }
 
@@ -234,7 +234,7 @@ async function parseFolderPage(
 
   return {
     code: 0,
-    msg: '解析成功',
+    msg: "解析成功",
     data: { files },
   };
 }
@@ -248,22 +248,22 @@ async function parseFolderItem(
   const parsed = await parseLanzouUrlWithRetry({
     url: fileUrl,
     pwd,
-    type: 'json',
+    type: "json",
   });
 
-  if (parsed.code === 0 && 'downUrl' in parsed.data) {
+  if (parsed.code === 0 && "downUrl" in parsed.data) {
     const parsedFile = parsed.data as ParseSuccessData;
     return [
       {
         name: itemName || parsedFile.name,
-        size: item.size || parsedFile.filesize || '',
-        date: item.time || '',
+        size: item.size || parsedFile.filesize || "",
+        date: item.time || "",
         downloadUrl: parsedFile.downUrl,
       },
     ];
   }
 
-  if (parsed.code === 0 && 'files' in parsed.data) {
+  if (parsed.code === 0 && "files" in parsed.data) {
     return parsed.data.files.map((file) => ({
       ...file,
       name: joinPathName(itemName, file.name),
@@ -273,9 +273,9 @@ async function parseFolderItem(
   return [
     {
       name: itemName,
-      size: item.size || '',
-      date: item.time || '',
-      downloadUrl: '',
+      size: item.size || "",
+      date: item.time || "",
+      downloadUrl: "",
       error: parsed.msg,
     },
   ];
@@ -286,7 +286,7 @@ async function parseLanzouUrlWithRetry(params: {
   pwd?: string;
   type?: string;
 }): Promise<ParseResult> {
-  let result: ParseResult = { code: 1, msg: '解析失败' };
+  let result: ParseResult = { code: 1, msg: "解析失败" };
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     result = await parseLanzouUrl(params);
@@ -303,10 +303,10 @@ async function parseLanzouUrlWithRetry(params: {
 function shouldRetryParse(result: ParseResult): boolean {
   return (
     result.code === 1 &&
-    (result.msg === '页面无内容' ||
-      result.msg === '无法解析下载页面' ||
-      result.msg === '获取文件标识失败' ||
-      result.msg === '解析异常')
+    (result.msg === "页面无内容" ||
+      result.msg === "无法解析下载页面" ||
+      result.msg === "获取文件标识失败" ||
+      result.msg === "解析异常")
   );
 }
 
@@ -317,7 +317,7 @@ function delay(ms: number): Promise<void> {
 }
 
 function joinPathName(parent: string, child: string): string {
-  if (!parent) return child || '';
+  if (!parent) return child || "";
   if (!child) return parent;
   return `${parent} / ${child}`;
 }
@@ -346,10 +346,10 @@ async function getFolderAjaxResult(
     {
       headers: {
         ...getHeaders(inputUrl),
-        'content-type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json, text/javascript, */*',
+        "content-type": "application/x-www-form-urlencoded",
+        Accept: "application/json, text/javascript, */*",
         origin: baseUrl,
-        'x-requested-with': 'XMLHttpRequest',
+        "x-requested-with": "XMLHttpRequest",
       },
     },
   );
@@ -365,21 +365,21 @@ function extractFolderPayload(
   const tVar = matchOne(html, /'t'\s*:\s*([A-Za-z_$][\w$]*)/);
   const kVar = matchOne(html, /'k'\s*:\s*([A-Za-z_$][\w$]*)/);
   const payload: Record<string, string> = {
-    lx: matchOne(html, /'lx'\s*:\s*(\d+)/) || '2',
-    fid: matchOne(html, /'fid'\s*:\s*(\d+)/) || '',
-    uid: matchOne(html, /'uid'\s*:\s*'([^']*)'/) || '',
-    puid: matchOne(html, /'puid'\s*:\s*'([^']*)'/) || '',
+    lx: matchOne(html, /'lx'\s*:\s*(\d+)/) || "2",
+    fid: matchOne(html, /'fid'\s*:\s*(\d+)/) || "",
+    uid: matchOne(html, /'uid'\s*:\s*'([^']*)'/) || "",
+    puid: matchOne(html, /'puid'\s*:\s*'([^']*)'/) || "",
     pg: String(page),
-    rep: matchOne(html, /'rep'\s*:\s*'([^']*)'/) || '0',
-    t: tVar ? matchVariableValue(html, tVar) || '' : '',
-    k: kVar ? matchVariableValue(html, kVar) || '' : '',
-    up: matchOne(html, /'up'\s*:\s*(\d+)/) || '1',
-    ls: matchOne(html, /'ls'\s*:\s*(\d+)/) || '1',
+    rep: matchOne(html, /'rep'\s*:\s*'([^']*)'/) || "0",
+    t: tVar ? matchVariableValue(html, tVar) || "" : "",
+    k: kVar ? matchVariableValue(html, kVar) || "" : "",
+    up: matchOne(html, /'up'\s*:\s*(\d+)/) || "1",
+    ls: matchOne(html, /'ls'\s*:\s*(\d+)/) || "1",
     pwd,
   };
 
   return Object.fromEntries(
-    Object.entries(payload).filter(([, value]) => value !== ''),
+    Object.entries(payload).filter(([, value]) => value !== ""),
   );
 }
 
@@ -406,12 +406,12 @@ function buildUrlCandidates(url: string): LanzouUrlCandidate[] {
   const pathAndSearch = `${parsedUrl.pathname}${parsedUrl.search}`;
   const baseUrls = [
     parsedUrl.origin,
-    'https://www.lanzoux.com',
-    'https://www.lanzouf.com',
-    'https://www.lanzouj.com',
-    'https://www.lanzouu.com',
-    'https://www.lanzouw.com',
-    'https://www.lanzouv.com',
+    "https://www.lanzoux.com",
+    "https://www.lanzouf.com",
+    "https://www.lanzouj.com",
+    "https://www.lanzouu.com",
+    "https://www.lanzouw.com",
+    "https://www.lanzouv.com",
   ];
   const seen = new Set<string>();
   const candidates: LanzouUrlCandidate[] = [];
@@ -442,7 +442,7 @@ async function getInitialCookies(
     });
   } catch (err: unknown) {
     console.warn(
-      '获取初始cookie失败:',
+      "获取初始cookie失败:",
       err instanceof Error ? err.message : err,
     );
   }
@@ -469,10 +469,10 @@ async function getAjaxmResult(
     {
       headers: {
         ...getHeaders(`${baseUrl}${iframeSrc}`),
-        'content-type': 'application/x-www-form-urlencoded',
-        Accept: 'application/json, text/javascript, */*',
+        "content-type": "application/x-www-form-urlencoded",
+        Accept: "application/json, text/javascript, */*",
         origin: baseUrl,
-        'x-requested-with': 'XMLHttpRequest',
+        "x-requested-with": "XMLHttpRequest",
       },
     },
   );
@@ -494,12 +494,12 @@ async function handleFinalUrl(
 ): Promise<ParseResult> {
   const downUrl1 = `${data.dom}/file/${data.url}`;
   const finalUrl = await resolveFinalUrl(client, downUrl1);
-  if (type === 'down' || type === 'redirect') {
-    return { code: 0, msg: '跳转下载', data: { redirect: finalUrl } };
+  if (type === "down" || type === "redirect") {
+    return { code: 0, msg: "跳转下载", data: { redirect: finalUrl } };
   }
   return {
     code: 0,
-    msg: '解析成功',
+    msg: "解析成功",
     data: { name: rename || fileName, filesize: fileSize, downUrl: finalUrl },
   };
 }
@@ -527,29 +527,29 @@ async function resolveNextRedirect(
   url: string,
 ): Promise<string | null> {
   return (
-    (await fetchRedirectLocation(client, url, 'HEAD')) ||
-    (await fetchRedirectLocation(client, url, 'GET'))
+    (await fetchRedirectLocation(client, url, "HEAD")) ||
+    (await fetchRedirectLocation(client, url, "GET"))
   );
 }
 
 async function fetchRedirectLocation(
   client: LanzouClient,
   url: string,
-  method: 'GET' | 'HEAD',
+  method: "GET" | "HEAD",
 ): Promise<string | null> {
   const headers = getHeaders(url);
   const cookies = client.getCookies();
   if (cookies) headers.Cookie = cookies;
-  if (method === 'GET') headers.Range = 'bytes=0-0';
+  if (method === "GET") headers.Range = "bytes=0-0";
 
   try {
     const response = await fetch(url, {
       method,
       headers,
-      redirect: 'manual',
+      redirect: "manual",
     });
 
-    const location = response.headers.get('location');
+    const location = response.headers.get("location");
     await response.body?.cancel();
 
     if (response.status >= 300 && response.status < 400 && location) {
@@ -557,7 +557,7 @@ async function fetchRedirectLocation(
     }
   } catch (err: unknown) {
     console.error(
-      '解析下载跳转失败:',
+      "解析下载跳转失败:",
       err instanceof Error ? err.message : err,
     );
   }
@@ -570,7 +570,7 @@ async function mapWithConcurrency<T, R>(
   limit: number,
   mapper: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-  const results = new Array<R>(items.length);
+  const results = Array.from<R>({ length: items.length });
   let nextIndex = 0;
   const workerCount = Math.min(Math.max(limit, 1), items.length);
 
@@ -589,17 +589,17 @@ async function mapWithConcurrency<T, R>(
 
 function extractFileName($: cheerio.CheerioAPI): string {
   return (
-    $('.n_box_3fn').text().trim() ||
-    $('.b span').text().trim() ||
-    $('title').text().replace(' 蓝奏云', '') ||
-    ''
+    $(".n_box_3fn").text().trim() ||
+    $(".b span").text().trim() ||
+    $("title").text().replace(" 蓝奏云", "") ||
+    ""
   );
 }
 
 function extractFileSize($: cheerio.CheerioAPI): string {
   return (
-    $('.n_filesize').text().replace('大小：', '').trim() ||
-    $('span.p7')
+    $(".n_filesize").text().replace("大小：", "").trim() ||
+    $("span.p7")
       .parent()
       .contents()
       .filter(function () {
@@ -623,11 +623,11 @@ function matchVariableValue(text: string, variableName: string): string | null {
 }
 
 function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function stripHtml(text: string): string {
-  return cheerio.load(`<span>${text}</span>`)('span').text().trim();
+  return cheerio.load(`<span>${text}</span>`)("span").text().trim();
 }
 
 export { parseLanzouUrl };
