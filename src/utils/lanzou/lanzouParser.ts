@@ -227,8 +227,7 @@ async function parseFolderPage(
     if (pageItems.length < 50) break;
   }
 
-  const files: ParseFileItem[] = [];
-  for (const item of items) {
+  const files = await mapWithConcurrency(items, 4, async (item) => {
     const fileUrl = new URL(item.id, baseUrl).toString();
     const parsed = await parseLanzouUrl({ url: fileUrl, type: 'json' });
     const parsedFile =
@@ -236,14 +235,14 @@ async function parseFolderPage(
         ? (parsed.data as ParseSuccessData)
         : null;
 
-    files.push({
+    return {
       name: stripHtml(item.name_all || parsedFile?.name || item.id),
       size: item.size || parsedFile?.filesize || '',
       date: item.time || '',
       downloadUrl: parsedFile?.downUrl || '',
       ...(parsed.code === 1 ? { error: parsed.msg } : {}),
-    });
-  }
+    };
+  });
 
   return {
     code: 0,
@@ -441,31 +440,80 @@ async function resolveFinalUrl(
   client: LanzouClient,
   url: string,
 ): Promise<string> {
-  try {
-    const res = await client.headWithAcwRetry(url, {
-      headers: getHeaders(url),
-      maxRedirects: 0,
-      validateStatus: (s: number) => s >= 200 && s < 400,
-    });
-    return (res.headers.location as string | undefined) ?? url;
-  } catch (err: unknown) {
-    if (
-      err instanceof Object &&
-      'response' in err &&
-      err.response instanceof Object &&
-      'status' in err.response &&
-      typeof err.response.status === 'number' &&
-      err.response.status >= 300 &&
-      err.response.status < 400 &&
-      'headers' in err.response &&
-      err.response.headers instanceof Object &&
-      'location' in err.response.headers
-    ) {
-      return (err.response.headers as Record<string, string>).location ?? url;
-    }
-    console.error('解析最终URL失败:', err instanceof Error ? err.message : err);
-    return url;
+  let currentUrl = url;
+
+  for (let i = 0; i < 5; i++) {
+    const nextUrl = await resolveNextRedirect(client, currentUrl);
+    if (!nextUrl || nextUrl === currentUrl) return currentUrl;
+    currentUrl = nextUrl;
   }
+
+  return currentUrl;
+}
+
+async function resolveNextRedirect(
+  client: LanzouClient,
+  url: string,
+): Promise<string | null> {
+  return (
+    (await fetchRedirectLocation(client, url, 'HEAD')) ||
+    (await fetchRedirectLocation(client, url, 'GET'))
+  );
+}
+
+async function fetchRedirectLocation(
+  client: LanzouClient,
+  url: string,
+  method: 'GET' | 'HEAD',
+): Promise<string | null> {
+  const headers = getHeaders(url);
+  const cookies = client.getCookies();
+  if (cookies) headers.Cookie = cookies;
+  if (method === 'GET') headers.Range = 'bytes=0-0';
+
+  try {
+    const response = await fetch(url, {
+      method,
+      headers,
+      redirect: 'manual',
+    });
+
+    const location = response.headers.get('location');
+    await response.body?.cancel();
+
+    if (response.status >= 300 && response.status < 400 && location) {
+      return new URL(location, url).toString();
+    }
+  } catch (err: unknown) {
+    console.error(
+      '解析下载跳转失败:',
+      err instanceof Error ? err.message : err,
+    );
+  }
+
+  return null;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(limit, 1), items.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex;
+        nextIndex += 1;
+        results[index] = await mapper(items[index] as T, index);
+      }
+    }),
+  );
+
+  return results;
 }
 
 function extractFileName($: cheerio.CheerioAPI): string {
