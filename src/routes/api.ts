@@ -3,15 +3,23 @@ import { readFontCache, writeFontCache } from '../utils/fontCache.js';
 import { parseLanzouUrl } from '../utils/lanzou/lanzouParser.js';
 import {
   type ManagedSettings,
+  addAccessPasscode,
   changeAdminPasscode,
+  clearAccessSessionCookie,
   clearAdminSessionCookie,
+  createAccessSessionCookie,
   createAdminSessionCookie,
+  deleteAccessPasscode,
   getManagedSettings,
+  hasAccessPasscodes,
   hasAdminPasscode,
+  isAccessRequest,
   isAdminRequest,
+  listAccessPasscodes,
   publicConfigStatus,
   saveManagedSettings,
   setupAdminPasscode,
+  verifyAccessPasscode,
   verifyAdminPasscode,
 } from '../utils/settingsStore.js';
 import {
@@ -34,6 +42,11 @@ interface AdminPasscodeRequest {
   nextPasscode?: unknown;
 }
 
+interface AccessPasscodeRequest {
+  label?: unknown;
+  passcode?: unknown;
+}
+
 interface AdminSettingsRequest {
   docUrl?: unknown;
   clientId?: unknown;
@@ -44,6 +57,10 @@ interface AdminSettingsRequest {
 
 function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function randomReadablePasscode(): string {
+  return Math.random().toString(36).slice(2, 10).toUpperCase();
 }
 
 function settingsCredentials(settings: ManagedSettings): TencentCredentials {
@@ -65,6 +82,12 @@ async function readJson<T>(request: Request): Promise<T> {
 function requireAdmin(c: Context): Response | null {
   if (isAdminRequest(c.req.header('cookie'))) return null;
   return c.json({ code: 401, msg: '需要登录后访问' }, 401);
+}
+
+function requireAccess(c: Context): Response | null {
+  const cookieHeader = c.req.header('cookie');
+  if (isAdminRequest(cookieHeader) || isAccessRequest(cookieHeader)) return null;
+  return c.json({ code: 401, msg: '需要访问口令' }, 401);
 }
 
 function validatePasscode(passcode: string): void {
@@ -90,6 +113,34 @@ router.get('/config', (c) => {
       isReady: status.hasDocUrl && status.hasTencentCredentials,
     },
   });
+});
+
+router.get('/access/status', (c) => {
+  const cookieHeader = c.req.header('cookie');
+  return c.json({
+    code: 0,
+    data: {
+      hasAccessPasscodes: hasAccessPasscodes(),
+      isAuthenticated: isAdminRequest(cookieHeader) || isAccessRequest(cookieHeader),
+    },
+  });
+});
+
+router.post('/access/login', async (c) => {
+  const body = await readJson<AdminPasscodeRequest>(c.req.raw);
+  const passcode = stringValue(body.passcode);
+
+  if (!verifyAccessPasscode(passcode)) {
+    return c.json({ code: 1, msg: '访问口令不正确' }, 401);
+  }
+
+  c.header('Set-Cookie', createAccessSessionCookie());
+  return c.json({ code: 0, msg: '登录成功' });
+});
+
+router.post('/access/logout', (c) => {
+  c.header('Set-Cookie', clearAccessSessionCookie());
+  return c.json({ code: 0, msg: '已退出' });
 });
 
 router.get('/admin/status', (c) => {
@@ -181,8 +232,60 @@ router.post('/admin/passcode', async (c) => {
   }
 });
 
-router.post('/fonts/sync', async (c) => {
+router.get('/admin/access-passcodes', (c) => {
   const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  return c.json({
+    code: 0,
+    data: {
+      passcodes: listAccessPasscodes(),
+    },
+  });
+});
+
+router.post('/admin/access-passcodes', async (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  try {
+    const body = await readJson<AccessPasscodeRequest>(c.req.raw);
+    const passcode = stringValue(body.passcode) || randomReadablePasscode();
+    validatePasscode(passcode);
+    const item = addAccessPasscode({
+      label: stringValue(body.label),
+      passcode,
+    });
+    return c.json({
+      code: 0,
+      msg: '访问口令已添加',
+      data: {
+        passcode,
+        item,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ code: 1, msg: message }, 400);
+  }
+});
+
+router.delete('/admin/access-passcodes/:id', (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  try {
+    deleteAccessPasscode(c.req.param('id'));
+    c.header('Set-Cookie', clearAccessSessionCookie());
+    return c.json({ code: 0, msg: '访问口令已删除' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ code: 1, msg: message }, 400);
+  }
+});
+
+router.post('/fonts/sync', async (c) => {
+  const denied = requireAccess(c);
   if (denied) return denied;
 
   const settings = getManagedSettings();
@@ -229,7 +332,7 @@ router.post('/fonts/sync', async (c) => {
 });
 
 router.get('/fonts/cache', (c) => {
-  const denied = requireAdmin(c);
+  const denied = requireAccess(c);
   if (denied) return denied;
 
   const settings = getManagedSettings();
@@ -253,7 +356,7 @@ router.get('/fonts/cache', (c) => {
 });
 
 router.post('/lanzou/parse', async (c) => {
-  const denied = requireAdmin(c);
+  const denied = requireAccess(c);
   if (denied) return denied;
 
   const body = await readJson<LanzouParseRequest>(c.req.raw);

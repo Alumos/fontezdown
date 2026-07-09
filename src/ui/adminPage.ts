@@ -213,6 +213,37 @@ export function renderAdminPage(): string {
         color: var(--red);
       }
 
+      .passcode-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .passcode-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        align-items: center;
+        min-height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.54);
+        padding: 8px 10px;
+      }
+
+      .passcode-row strong {
+        display: block;
+        overflow-wrap: anywhere;
+      }
+
+      .passcode-row span {
+        display: block;
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
       .hidden {
         display: none !important;
       }
@@ -300,6 +331,26 @@ export function renderAdminPage(): string {
             </div>
             <button class="btn row" type="submit">更新口令</button>
           </form>
+
+          <h2 style="margin-top: 24px">主界面访问口令</h2>
+          <form class="fields" id="accessPasscodeForm">
+            <div class="field">
+              <label for="accessLabel">口令名称</label>
+              <input id="accessLabel" autocomplete="off" placeholder="例如：自己、临时分享" />
+            </div>
+            <div class="field">
+              <label for="accessPasscode">访问口令</label>
+              <input id="accessPasscode" autocomplete="off" />
+            </div>
+            <div class="actions">
+              <button class="btn row" type="submit">添加口令</button>
+              <button class="btn secondary row" id="generateAccessPasscodeBtn" type="button">
+                随机生成
+              </button>
+            </div>
+          </form>
+          <div class="passcode-list" id="accessPasscodeList"></div>
+
           <div class="actions">
             <button class="btn secondary" id="logoutBtn" type="button">退出登录</button>
           </div>
@@ -310,6 +361,7 @@ export function renderAdminPage(): string {
     <script>
       var state = {
         mode: 'login',
+        accessPasscodes: [],
       };
 
       var els = {
@@ -322,6 +374,11 @@ export function renderAdminPage(): string {
         settingsForm: document.getElementById('settingsForm'),
         passcodeForm: document.getElementById('passcodeForm'),
         logoutBtn: document.getElementById('logoutBtn'),
+        accessPasscodeForm: document.getElementById('accessPasscodeForm'),
+        accessLabel: document.getElementById('accessLabel'),
+        accessPasscode: document.getElementById('accessPasscode'),
+        accessPasscodeList: document.getElementById('accessPasscodeList'),
+        generateAccessPasscodeBtn: document.getElementById('generateAccessPasscodeBtn'),
         docUrl: document.getElementById('docUrl'),
         clientId: document.getElementById('clientId'),
         accessToken: document.getElementById('accessToken'),
@@ -336,9 +393,44 @@ export function renderAdminPage(): string {
         els.topStatus.className = 'status' + (kind ? ' ' + kind : '');
       }
 
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+
+      function formatTime(value) {
+        if (!value) return '';
+        var date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        return date.toLocaleString('zh-CN', { hour12: false });
+      }
+
+      function randomPasscode() {
+        var alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        var bytes = new Uint8Array(8);
+        crypto.getRandomValues(bytes);
+        return Array.prototype.map
+          .call(bytes, function (byte) {
+            return alphabet[byte % alphabet.length];
+          })
+          .join('');
+      }
+
       async function requestJson(url, options) {
         var response = await fetch(url, options || {});
-        var data = await response.json();
+        var text = await response.text();
+        var data = {};
+        try {
+          data = text ? JSON.parse(text) : {};
+        } catch {
+          throw new Error(
+            '请求返回非 JSON：' + (text ? text.slice(0, 120) : response.status),
+          );
+        }
         if (!response.ok || data.code !== 0) {
           throw new Error(data.msg || '请求失败');
         }
@@ -351,6 +443,41 @@ export function renderAdminPage(): string {
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify(body),
         });
+      }
+
+      function deleteJson(url) {
+        return requestJson(url, { method: 'DELETE' });
+      }
+
+      function renderAccessPasscodes() {
+        if (!state.accessPasscodes.length) {
+          els.accessPasscodeList.innerHTML =
+            '<div class="status">还没有主界面访问口令</div>';
+          return;
+        }
+
+        els.accessPasscodeList.innerHTML = state.accessPasscodes
+          .map(function (item) {
+            return (
+              '<div class="passcode-row">' +
+              '<div><strong>' +
+              escapeHtml(item.label || '未命名口令') +
+              '</strong><span>' +
+              escapeHtml(formatTime(item.createdAt)) +
+              '</span></div>' +
+              '<button class="btn secondary row" data-delete-access-id="' +
+              escapeHtml(item.id) +
+              '" type="button">删除</button>' +
+              '</div>'
+            );
+          })
+          .join('');
+      }
+
+      async function loadAccessPasscodes() {
+        var data = await requestJson('/api/admin/access-passcodes');
+        state.accessPasscodes = data.passcodes || [];
+        renderAccessPasscodes();
       }
 
       function showAuth(mode) {
@@ -371,6 +498,7 @@ export function renderAdminPage(): string {
         els.accessToken.value = settings.accessToken || '';
         els.openId.value = settings.openId || '';
         els.lanzouPwd.value = settings.lanzouPwd || '';
+        await loadAccessPasscodes();
       }
 
       async function boot() {
@@ -433,6 +561,43 @@ export function renderAdminPage(): string {
           });
           setStatus('口令已更新，请重新登录', 'ok');
           showAuth('login');
+        } catch (error) {
+          setStatus(error.message, 'err');
+        }
+      });
+
+      els.generateAccessPasscodeBtn.addEventListener('click', function () {
+        els.accessPasscode.value = randomPasscode();
+        els.accessPasscode.focus();
+      });
+
+      els.accessPasscodeForm.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        try {
+          var data = await postJson('/api/admin/access-passcodes', {
+            label: els.accessLabel.value.trim(),
+            passcode: els.accessPasscode.value.trim(),
+          });
+          els.accessLabel.value = '';
+          els.accessPasscode.value = '';
+          await loadAccessPasscodes();
+          setStatus('访问口令已添加：' + data.passcode, 'ok');
+        } catch (error) {
+          setStatus(error.message, 'err');
+        }
+      });
+
+      els.accessPasscodeList.addEventListener('click', async function (event) {
+        var button = event.target.closest('[data-delete-access-id]');
+        if (!button) return;
+
+        try {
+          await deleteJson(
+            '/api/admin/access-passcodes/' +
+              encodeURIComponent(button.getAttribute('data-delete-access-id')),
+          );
+          await loadAccessPasscodes();
+          setStatus('访问口令已删除', 'ok');
         } catch (error) {
           setStatus(error.message, 'err');
         }

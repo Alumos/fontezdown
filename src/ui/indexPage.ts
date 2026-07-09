@@ -1283,11 +1283,14 @@ export function renderIndexPage(): string {
 
       async function requestJson(url, options) {
         var response = await fetch(url, options || {});
+        var text = await response.text();
         var data = {};
         try {
-          data = await response.json();
+          data = text ? JSON.parse(text) : {};
         } catch {
-          data = {};
+          throw new Error(
+            '请求返回非 JSON：' + (text ? text.slice(0, 120) : response.status),
+          );
         }
 
         if (response.status === 401) {
@@ -1390,18 +1393,17 @@ export function renderIndexPage(): string {
 
       async function boot() {
         try {
-          var status = await requestJson('/api/admin/status');
-          if (!status.hasAdminPasscode) {
-            els.homeAdminLink.textContent = '设置口令';
-            showAuth('首次进入，请先在管理后台设置口令', 'err');
+          var status = await requestJson('/api/access/status');
+          els.homeAdminLink.textContent = '管理后台';
+          if (!status.hasAccessPasscodes) {
+            showAuth('请先在管理后台添加主界面访问口令', 'err');
             return;
           }
 
-          els.homeAdminLink.textContent = '管理后台';
           if (status.isAuthenticated) {
             await showApp();
           } else {
-            showAuth('请输入口令进入', '');
+            showAuth('请输入主界面访问口令', '');
           }
         } catch (error) {
           showAuth(error.message, 'err');
@@ -1438,7 +1440,7 @@ export function renderIndexPage(): string {
         try {
           els.homeAuthBtn.disabled = true;
           setAuthStatus('正在验证口令', '');
-          await postJson('/api/admin/login', {
+          await postJson('/api/access/login', {
             passcode: els.homePasscode.value.trim(),
           });
           setAuthStatus('登录成功', 'ok');

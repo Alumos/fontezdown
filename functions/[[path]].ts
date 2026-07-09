@@ -39,9 +39,23 @@ interface AdminState {
   envManaged?: boolean;
 }
 
+interface AccessPasscode {
+  id: string;
+  label: string;
+  passwordHash: string;
+  passwordSalt: string;
+  createdAt: string;
+}
+
+interface AccessState {
+  passcodes: AccessPasscode[];
+  sessionSecret: string;
+}
+
 interface SettingsFile {
   settings: ManagedSettings;
   admin: AdminState;
+  access?: AccessState;
 }
 
 interface SessionPayload {
@@ -64,6 +78,12 @@ interface AdminPasscodeRequest {
   nextPasscode?: unknown;
 }
 
+interface AccessPasscodeRequest {
+  id?: unknown;
+  label?: unknown;
+  passcode?: unknown;
+}
+
 interface AdminSettingsRequest {
   docUrl?: unknown;
   clientId?: unknown;
@@ -75,7 +95,8 @@ interface AdminSettingsRequest {
 const BLOB_STORE_NAME = 'fontezdown';
 const STORE_KEY = 'config/settings.json';
 const CACHE_KEY = 'cache/fonts.json';
-const SESSION_COOKIE = 'fontsez_admin';
+const ADMIN_SESSION_COOKIE = 'fontsez_admin';
+const ACCESS_SESSION_COOKIE = 'fontsez_access';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const PBKDF2_ITERATIONS = 100000;
 
@@ -111,10 +132,27 @@ function getBlobStore() {
   return getStore(BLOB_STORE_NAME);
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'content-type': 'application/json; charset=utf-8',
+    },
+  });
+}
+
 function randomHex(bytes: number): string {
   const data = new Uint8Array(bytes);
   crypto.getRandomValues(data);
   return [...data].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function randomReadablePasscode(): string {
+  return randomHex(4).toUpperCase();
 }
 
 async function digestHex(
@@ -233,13 +271,17 @@ async function envAdminState(env: EdgeEnv): Promise<AdminState | null> {
   };
 }
 
-async function emptyAdmin(env: EdgeEnv): Promise<AdminState> {
-  const envAdmin = await envAdminState(env);
-  if (envAdmin) return envAdmin;
-
+function emptyAdmin(): AdminState {
   return {
     passwordHash: '',
     passwordSalt: '',
+    sessionSecret: randomHex(32),
+  };
+}
+
+function emptyAccess(): AccessState {
+  return {
+    passcodes: [],
     sessionSecret: randomHex(32),
   };
 }
@@ -251,23 +293,44 @@ async function readJsonFromBlob<T>(key: string): Promise<T | null> {
   })) as T | null;
 }
 
+async function readOptionalJsonFromBlob<T>(key: string): Promise<T | null> {
+  try {
+    return await readJsonFromBlob<T>(key);
+  } catch (error) {
+    console.error('EdgeOne Blob 读取失败:', errorMessage(error));
+    return null;
+  }
+}
+
 async function writeJsonToBlob(key: string, value: unknown): Promise<void> {
-  await getBlobStore().setJSON(key, value, {
-    cacheControl: 'no-store',
-  });
+  try {
+    await getBlobStore().setJSON(key, value, {
+      cacheControl: 'no-store',
+    });
+  } catch (error) {
+    throw new Error(`EdgeOne Blob 写入失败：${errorMessage(error)}`);
+  }
 }
 
 async function readStore(env: EdgeEnv): Promise<SettingsFile> {
-  const parsed = await readJsonFromBlob<Partial<SettingsFile>>(STORE_KEY);
+  const envAdmin = await envAdminState(env);
+  const parsed = await readOptionalJsonFromBlob<Partial<SettingsFile>>(
+    STORE_KEY,
+  );
 
   return {
     settings: {
       ...defaultSettings(env),
       ...parsed?.settings,
     },
-    admin: {
-      ...(await emptyAdmin(env)),
+    admin: envAdmin || {
+      ...emptyAdmin(),
       ...parsed?.admin,
+    },
+    access: {
+      ...emptyAccess(),
+      ...parsed?.access,
+      passcodes: parsed?.access?.passcodes || [],
     },
   };
 }
@@ -327,24 +390,113 @@ async function changeAdminPasscode(
   await writeStore(env, store);
 }
 
+async function listAccessPasscodes(env: EdgeEnv): Promise<
+  { id: string; label: string; createdAt: string }[]
+> {
+  const store = await readStore(env);
+  return (store.access?.passcodes || []).map((item) => ({
+    id: item.id,
+    label: item.label,
+    createdAt: item.createdAt,
+  }));
+}
+
+async function addAccessPasscode(
+  env: EdgeEnv,
+  { label, passcode }: { label: string; passcode: string },
+): Promise<{ id: string; label: string; createdAt: string }> {
+  validatePasscode(passcode);
+
+  const store = await readStore(env);
+  const access = store.access || emptyAccess();
+  const salt = randomHex(16);
+  const createdAt = new Date().toISOString();
+  const item: AccessPasscode = {
+    id: randomHex(8),
+    label: label || `访问口令 ${access.passcodes.length + 1}`,
+    passwordHash: await hashPasscode(passcode, salt),
+    passwordSalt: salt,
+    createdAt,
+  };
+
+  access.passcodes = [...access.passcodes, item];
+  store.access = access;
+  await writeStore(env, store);
+
+  return {
+    id: item.id,
+    label: item.label,
+    createdAt: item.createdAt,
+  };
+}
+
+async function deleteAccessPasscode(env: EdgeEnv, id: string): Promise<void> {
+  const store = await readStore(env);
+  const access = store.access || emptyAccess();
+  const nextPasscodes = access.passcodes.filter((item) => item.id !== id);
+  if (nextPasscodes.length === access.passcodes.length) {
+    throw new Error('访问口令不存在');
+  }
+
+  access.passcodes = nextPasscodes;
+  access.sessionSecret = randomHex(32);
+  store.access = access;
+  await writeStore(env, store);
+}
+
+async function hasAccessPasscodes(env: EdgeEnv): Promise<boolean> {
+  const store = await readStore(env);
+  return Boolean(store.access?.passcodes.length);
+}
+
+async function verifyAccessPasscode(
+  env: EdgeEnv,
+  passcode: string,
+): Promise<boolean> {
+  const store = await readStore(env);
+  const passcodes = store.access?.passcodes || [];
+
+  for (const item of passcodes) {
+    const hash = await hashPasscode(passcode, item.passwordSalt);
+    if (safeEqual(hash, item.passwordHash)) return true;
+  }
+
+  return false;
+}
+
 async function createAdminSessionCookie(env: EdgeEnv): Promise<string> {
   const store = await readStore(env);
+  return createSessionCookie(ADMIN_SESSION_COOKIE, store.admin.sessionSecret);
+}
+
+async function createAccessSessionCookie(env: EdgeEnv): Promise<string> {
+  const store = await readStore(env);
+  return createSessionCookie(
+    ACCESS_SESSION_COOKIE,
+    store.access?.sessionSecret || emptyAccess().sessionSecret,
+  );
+}
+
+async function createSessionCookie(
+  name: string,
+  secret: string,
+): Promise<string> {
   const now = Date.now();
   const token = await encodeSession(
     {
       iat: now,
       exp: now + SESSION_TTL_MS,
     },
-    store.admin.sessionSecret,
+    secret,
   );
 
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${
     SESSION_TTL_MS / 1000
   }`;
 }
 
-function clearAdminSessionCookie(): string {
-  return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
+function clearSessionCookie(name: string): string {
+  return `${name}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`;
 }
 
 async function isAdminRequest(
@@ -353,7 +505,30 @@ async function isAdminRequest(
 ): Promise<boolean> {
   const store = await readStore(env);
   if (!store.admin.passwordHash) return false;
+  return isSessionCookieValid(
+    cookieHeader,
+    ADMIN_SESSION_COOKIE,
+    store.admin.sessionSecret,
+  );
+}
 
+async function isAccessRequest(
+  env: EdgeEnv,
+  cookieHeader: string | undefined,
+): Promise<boolean> {
+  const store = await readStore(env);
+  const secret = store.access?.sessionSecret;
+  if (!secret || !store.access?.passcodes.length) {
+    return false;
+  }
+  return isSessionCookieValid(cookieHeader, ACCESS_SESSION_COOKIE, secret);
+}
+
+async function isSessionCookieValid(
+  cookieHeader: string | undefined,
+  cookieName: string,
+  secret: string,
+): Promise<boolean> {
   const cookies = Object.fromEntries(
     (cookieHeader ?? '')
       .split(';')
@@ -367,10 +542,8 @@ async function isAdminRequest(
       }),
   );
 
-  const token = cookies[SESSION_COOKIE];
-  return Boolean(
-    token && (await decodeSession(token, store.admin.sessionSecret)),
-  );
+  const token = cookies[cookieName];
+  return Boolean(token && (await decodeSession(token, secret)));
 }
 
 async function publicConfigStatus(env: EdgeEnv): Promise<{
@@ -396,7 +569,7 @@ async function readFontCache(
   env: EdgeEnv,
   docUrl?: string,
 ): Promise<FontCacheEntry | null> {
-  const cache = await readJsonFromBlob<FontCacheEntry>(CACHE_KEY);
+  const cache = await readOptionalJsonFromBlob<FontCacheEntry>(CACHE_KEY);
   if (!cache) return null;
   if (docUrl && cache.docUrl !== docUrl) return null;
   return cache;
@@ -435,6 +608,17 @@ async function requireAdmin(c: Context<{ Bindings: EdgeEnv }>): Promise<Response
   return c.json({ code: 401, msg: '需要登录后访问' }, 401);
 }
 
+async function requireAccess(c: Context<{ Bindings: EdgeEnv }>): Promise<Response | null> {
+  const cookieHeader = c.req.header('cookie');
+  if (
+    (await isAdminRequest(c.env, cookieHeader)) ||
+    (await isAccessRequest(c.env, cookieHeader))
+  ) {
+    return null;
+  }
+  return c.json({ code: 401, msg: '需要访问口令' }, 401);
+}
+
 function validatePasscode(passcode: string): void {
   if (passcode.length < 4) throw new Error('口令至少需要 4 位');
 }
@@ -458,9 +642,40 @@ app.get('/api/config', async (c) => {
     code: 0,
     data: {
       ...status,
+      hasAccessPasscodes: await hasAccessPasscodes(c.env),
       isReady: status.hasDocUrl && status.hasTencentCredentials,
     },
   });
+});
+
+app.get('/api/access/status', async (c) => {
+  const cookieHeader = c.req.header('cookie');
+  return c.json({
+    code: 0,
+    data: {
+      hasAccessPasscodes: await hasAccessPasscodes(c.env),
+      isAuthenticated:
+        (await isAdminRequest(c.env, cookieHeader)) ||
+        (await isAccessRequest(c.env, cookieHeader)),
+    },
+  });
+});
+
+app.post('/api/access/login', async (c) => {
+  const body = await readJson<AdminPasscodeRequest>(c.req.raw);
+  const passcode = stringValue(body.passcode);
+
+  if (!(await verifyAccessPasscode(c.env, passcode))) {
+    return c.json({ code: 1, msg: '访问口令不正确' }, 401);
+  }
+
+  c.header('Set-Cookie', await createAccessSessionCookie(c.env));
+  return c.json({ code: 0, msg: '登录成功' });
+});
+
+app.post('/api/access/logout', (c) => {
+  c.header('Set-Cookie', clearSessionCookie(ACCESS_SESSION_COOKIE));
+  return c.json({ code: 0, msg: '已退出' });
 });
 
 app.get('/api/admin/status', async (c) => {
@@ -468,6 +683,7 @@ app.get('/api/admin/status', async (c) => {
     code: 0,
     data: {
       hasAdminPasscode: await hasAdminPasscode(c.env),
+      hasAccessPasscodes: await hasAccessPasscodes(c.env),
       isAuthenticated: await isAdminRequest(c.env, c.req.header('cookie')),
     },
   });
@@ -500,7 +716,7 @@ app.post('/api/admin/login', async (c) => {
 });
 
 app.post('/api/admin/logout', (c) => {
-  c.header('Set-Cookie', clearAdminSessionCookie());
+  c.header('Set-Cookie', clearSessionCookie(ADMIN_SESSION_COOKIE));
   return c.json({ code: 0, msg: '已退出' });
 });
 
@@ -551,7 +767,7 @@ app.post('/api/admin/passcode', async (c) => {
     const nextPasscode = stringValue(body.nextPasscode);
     validatePasscode(nextPasscode);
     await changeAdminPasscode(c.env, currentPasscode, nextPasscode);
-    c.header('Set-Cookie', clearAdminSessionCookie());
+    c.header('Set-Cookie', clearSessionCookie(ADMIN_SESSION_COOKIE));
     return c.json({ code: 0, msg: '口令已更新，请重新登录' });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -559,8 +775,57 @@ app.post('/api/admin/passcode', async (c) => {
   }
 });
 
-app.post('/api/fonts/sync', async (c) => {
+app.get('/api/admin/access-passcodes', async (c) => {
   const denied = await requireAdmin(c);
+  if (denied) return denied;
+
+  return c.json({
+    code: 0,
+    data: {
+      passcodes: await listAccessPasscodes(c.env),
+    },
+  });
+});
+
+app.post('/api/admin/access-passcodes', async (c) => {
+  const denied = await requireAdmin(c);
+  if (denied) return denied;
+
+  try {
+    const body = await readJson<AccessPasscodeRequest>(c.req.raw);
+    const passcode = stringValue(body.passcode) || randomReadablePasscode();
+    const item = await addAccessPasscode(c.env, {
+      label: stringValue(body.label),
+      passcode,
+    });
+    return c.json({
+      code: 0,
+      msg: '访问口令已添加',
+      data: {
+        passcode,
+        item,
+      },
+    });
+  } catch (error) {
+    return c.json({ code: 1, msg: errorMessage(error) }, 400);
+  }
+});
+
+app.delete('/api/admin/access-passcodes/:id', async (c) => {
+  const denied = await requireAdmin(c);
+  if (denied) return denied;
+
+  try {
+    await deleteAccessPasscode(c.env, c.req.param('id'));
+    c.header('Set-Cookie', clearSessionCookie(ACCESS_SESSION_COOKIE));
+    return c.json({ code: 0, msg: '访问口令已删除' });
+  } catch (error) {
+    return c.json({ code: 1, msg: errorMessage(error) }, 400);
+  }
+});
+
+app.post('/api/fonts/sync', async (c) => {
+  const denied = await requireAccess(c);
   if (denied) return denied;
 
   const settings = await getManagedSettings(c.env);
@@ -607,7 +872,7 @@ app.post('/api/fonts/sync', async (c) => {
 });
 
 app.get('/api/fonts/cache', async (c) => {
-  const denied = await requireAdmin(c);
+  const denied = await requireAccess(c);
   if (denied) return denied;
 
   const settings = await getManagedSettings(c.env);
@@ -631,7 +896,7 @@ app.get('/api/fonts/cache', async (c) => {
 });
 
 app.post('/api/lanzou/parse', async (c) => {
-  const denied = await requireAdmin(c);
+  const denied = await requireAccess(c);
   if (denied) return denied;
 
   const body = await readJson<LanzouParseRequest>(c.req.raw);
@@ -691,7 +956,7 @@ app.post('/api/lanzou/parse', async (c) => {
 });
 
 app.all('/lanzou', async (c) => {
-  const denied = await requireAdmin(c);
+  const denied = await requireAccess(c);
   if (denied) return denied;
 
   try {
@@ -724,5 +989,17 @@ export function onRequest(context: {
   request: Request;
   env: EdgeEnv;
 }): Response | Promise<Response> {
-  return app.fetch(context.request, context.env);
+  return Promise.resolve(app.fetch(context.request, context.env)).catch(
+    (error: unknown) => {
+      console.error('EdgeOne 函数未捕获错误:', errorMessage(error));
+      return jsonResponse(
+        {
+          code: 1,
+          msg: 'EdgeOne 函数执行失败',
+          error: errorMessage(error),
+        },
+        500,
+      );
+    },
+  );
 }

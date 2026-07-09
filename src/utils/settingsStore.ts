@@ -22,9 +22,23 @@ interface AdminState {
   sessionSecret: string;
 }
 
+interface AccessPasscode {
+  id: string;
+  label: string;
+  passwordHash: string;
+  passwordSalt: string;
+  createdAt: string;
+}
+
+interface AccessState {
+  passcodes: AccessPasscode[];
+  sessionSecret: string;
+}
+
 interface SettingsFile {
   settings: ManagedSettings;
   admin: AdminState;
+  access?: AccessState;
 }
 
 interface SessionPayload {
@@ -34,6 +48,7 @@ interface SessionPayload {
 
 const STORE_PATH = resolve(process.cwd(), 'data', 'settings.local');
 const SESSION_COOKIE = 'fontsez_admin';
+const ACCESS_SESSION_COOKIE = 'fontsez_access';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const PBKDF2_ITERATIONS = 100000;
 const LEGACY_PBKDF2_ITERATIONS = 120000;
@@ -52,6 +67,13 @@ function emptyAdmin(): AdminState {
   return {
     passwordHash: '',
     passwordSalt: '',
+    sessionSecret: randomBytes(32).toString('hex'),
+  };
+}
+
+function emptyAccess(): AccessState {
+  return {
+    passcodes: [],
     sessionSecret: randomBytes(32).toString('hex'),
   };
 }
@@ -75,6 +97,11 @@ function readStore(): SettingsFile {
     admin: {
       ...emptyAdmin(),
       ...parsed.admin,
+    },
+    access: {
+      ...emptyAccess(),
+      ...parsed.access,
+      passcodes: parsed.access?.passcodes || [],
     },
   };
 }
@@ -189,16 +216,28 @@ export function changeAdminPasscode(
 
 export function createAdminSessionCookie(): string {
   const store = readStore();
+  return createSessionCookie(SESSION_COOKIE, store.admin.sessionSecret);
+}
+
+export function createAccessSessionCookie(): string {
+  const store = readStore();
+  return createSessionCookie(
+    ACCESS_SESSION_COOKIE,
+    store.access?.sessionSecret || emptyAccess().sessionSecret,
+  );
+}
+
+function createSessionCookie(name: string, secret: string): string {
   const now = Date.now();
   const token = encodeSession(
     {
       iat: now,
       exp: now + SESSION_TTL_MS,
     },
-    store.admin.sessionSecret,
+    secret,
   );
 
-  return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${
+  return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${
     SESSION_TTL_MS / 1000
   }`;
 }
@@ -207,10 +246,32 @@ export function clearAdminSessionCookie(): string {
   return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
 }
 
+export function clearAccessSessionCookie(): string {
+  return `${ACCESS_SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+}
+
 export function isAdminRequest(cookieHeader: string | undefined): boolean {
   const store = readStore();
   if (!store.admin.passwordHash) return false;
+  return isSessionCookieValid(
+    cookieHeader,
+    SESSION_COOKIE,
+    store.admin.sessionSecret,
+  );
+}
 
+export function isAccessRequest(cookieHeader: string | undefined): boolean {
+  const store = readStore();
+  const secret = store.access?.sessionSecret;
+  if (!secret || !store.access?.passcodes.length) return false;
+  return isSessionCookieValid(cookieHeader, ACCESS_SESSION_COOKIE, secret);
+}
+
+function isSessionCookieValid(
+  cookieHeader: string | undefined,
+  name: string,
+  secret: string,
+): boolean {
   const cookies = Object.fromEntries(
     (cookieHeader ?? '')
       .split(';')
@@ -224,8 +285,8 @@ export function isAdminRequest(cookieHeader: string | undefined): boolean {
       }),
   );
 
-  const token = cookies[SESSION_COOKIE];
-  return Boolean(token && decodeSession(token, store.admin.sessionSecret));
+  const token = cookies[name];
+  return Boolean(token && decodeSession(token, secret));
 }
 
 export function publicConfigStatus(): {
@@ -233,6 +294,7 @@ export function publicConfigStatus(): {
   hasDocUrl: boolean;
   hasTencentCredentials: boolean;
   hasLanzouPassword: boolean;
+  hasAccessPasscodes: boolean;
 } {
   const store = readStore();
   return {
@@ -244,5 +306,74 @@ export function publicConfigStatus(): {
       store.settings.openId,
     ),
     hasLanzouPassword: Boolean(store.settings.lanzouPwd),
+    hasAccessPasscodes: Boolean(store.access?.passcodes.length),
   };
+}
+
+export function hasAccessPasscodes(): boolean {
+  return Boolean(readStore().access?.passcodes.length);
+}
+
+export function verifyAccessPasscode(passcode: string): boolean {
+  const store = readStore();
+  const passcodes = store.access?.passcodes || [];
+  return passcodes.some((item) =>
+    safeEqualHex(hashPasscode(passcode, item.passwordSalt), item.passwordHash),
+  );
+}
+
+export function listAccessPasscodes(): {
+  id: string;
+  label: string;
+  createdAt: string;
+}[] {
+  const store = readStore();
+  return (store.access?.passcodes || []).map((item) => ({
+    id: item.id,
+    label: item.label,
+    createdAt: item.createdAt,
+  }));
+}
+
+export function addAccessPasscode({
+  label,
+  passcode,
+}: {
+  label: string;
+  passcode: string;
+}): { id: string; label: string; createdAt: string } {
+  const store = readStore();
+  const access = store.access || emptyAccess();
+  const salt = randomBytes(16).toString('hex');
+  const item: AccessPasscode = {
+    id: randomBytes(8).toString('hex'),
+    label: label || `访问口令 ${access.passcodes.length + 1}`,
+    passwordHash: hashPasscode(passcode, salt),
+    passwordSalt: salt,
+    createdAt: new Date().toISOString(),
+  };
+
+  access.passcodes = [...access.passcodes, item];
+  store.access = access;
+  writeStore(store);
+
+  return {
+    id: item.id,
+    label: item.label,
+    createdAt: item.createdAt,
+  };
+}
+
+export function deleteAccessPasscode(id: string): void {
+  const store = readStore();
+  const access = store.access || emptyAccess();
+  const nextPasscodes = access.passcodes.filter((item) => item.id !== id);
+  if (nextPasscodes.length === access.passcodes.length) {
+    throw new Error('访问口令不存在');
+  }
+
+  access.passcodes = nextPasscodes;
+  access.sessionSecret = randomBytes(32).toString('hex');
+  store.access = access;
+  writeStore(store);
 }
