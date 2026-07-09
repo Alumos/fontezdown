@@ -53,9 +53,7 @@ export const rateLimit = {
 };
 
 export const tencentDocs = {
-  docUrl:
-    envValue('TENCENT_DOC_URL', 'QQ_DOC_URL') ||
-    'https://docs.qq.com/doc/DS2xpdW51RUJZVVhz',
+  docUrl: envValue('TENCENT_DOC_URL', 'QQ_DOC_URL'),
   clientId: envValue('TENCENT_DOC_CLIENT_ID', 'QQ_DOC_CLIENT_ID'),
   accessToken: envValue('TENCENT_DOC_ACCESS_TOKEN', 'QQ_DOC_ACCESS_TOKEN'),
   openId: envValue('TENCENT_DOC_OPEN_ID', 'QQ_DOC_OPEN_ID'),

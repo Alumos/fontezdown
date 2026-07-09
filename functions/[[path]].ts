@@ -7,17 +7,11 @@ import {
   type TencentDocSyncResult,
   syncTencentDocFonts,
 } from '../src/utils/tencentDocs.js';
+import { getStore } from '@edgeone/pages-blob';
 import type { ParseSuccessData } from '../src/utils/types.js';
 import { Hono, type Context } from 'hono';
 
-interface EdgeKv {
-  get(key: string): Promise<string | null>;
-  put(key: string, value: string): Promise<void>;
-  delete?(key: string): Promise<void>;
-}
-
 interface EdgeEnv {
-  FONTSEZ_KV?: EdgeKv;
   ADMIN_PASSCODE?: string;
   TENCENT_DOC_URL?: string;
   QQ_DOC_URL?: string;
@@ -78,8 +72,9 @@ interface AdminSettingsRequest {
   lanzouPwd?: unknown;
 }
 
-const STORE_KEY = 'fontsez:settings';
-const CACHE_KEY = 'fontsez:fonts-cache';
+const BLOB_STORE_NAME = 'fontezdown';
+const STORE_KEY = 'config/settings.json';
+const CACHE_KEY = 'cache/fonts.json';
 const SESSION_COOKIE = 'fontsez_admin';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
 const PBKDF2_ITERATIONS = 100000;
@@ -100,9 +95,7 @@ function envValue(env: EdgeEnv, ...keys: (keyof EdgeEnv)[]): string {
 
 function defaultSettings(env: EdgeEnv): ManagedSettings {
   return {
-    docUrl:
-      envValue(env, 'TENCENT_DOC_URL', 'QQ_DOC_URL') ||
-      'https://docs.qq.com/doc/DS2xpdW51RUJZVVhz',
+    docUrl: envValue(env, 'TENCENT_DOC_URL', 'QQ_DOC_URL'),
     clientId: envValue(env, 'TENCENT_DOC_CLIENT_ID', 'QQ_DOC_CLIENT_ID'),
     accessToken: envValue(
       env,
@@ -112,6 +105,10 @@ function defaultSettings(env: EdgeEnv): ManagedSettings {
     openId: envValue(env, 'TENCENT_DOC_OPEN_ID', 'QQ_DOC_OPEN_ID'),
     lanzouPwd: envValue(env, 'LANZOU_PWD'),
   };
+}
+
+function getBlobStore() {
+  return getStore(BLOB_STORE_NAME);
 }
 
 function randomHex(bytes: number): string {
@@ -247,27 +244,21 @@ async function emptyAdmin(env: EdgeEnv): Promise<AdminState> {
   };
 }
 
-function requireKv(env: EdgeEnv): EdgeKv {
-  if (!env.FONTSEZ_KV) {
-    throw new Error('KV 未绑定：请在 Cloudflare Pages 或 EdgeOne 中绑定变量名 FONTSEZ_KV');
-  }
-  return env.FONTSEZ_KV;
+async function readJsonFromBlob<T>(key: string): Promise<T | null> {
+  return (await getBlobStore().get(key, {
+    type: 'json',
+    consistency: 'strong',
+  })) as T | null;
 }
 
-async function readJsonFromKv<T>(kv: EdgeKv, key: string): Promise<T | null> {
-  const raw = await kv.get(key);
-  if (!raw) return null;
-
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
+async function writeJsonToBlob(key: string, value: unknown): Promise<void> {
+  await getBlobStore().setJSON(key, value, {
+    cacheControl: 'no-store',
+  });
 }
 
 async function readStore(env: EdgeEnv): Promise<SettingsFile> {
-  const kv = env.FONTSEZ_KV;
-  const parsed = kv ? await readJsonFromKv<Partial<SettingsFile>>(kv, STORE_KEY) : null;
+  const parsed = await readJsonFromBlob<Partial<SettingsFile>>(STORE_KEY);
 
   return {
     settings: {
@@ -282,7 +273,7 @@ async function readStore(env: EdgeEnv): Promise<SettingsFile> {
 }
 
 async function writeStore(env: EdgeEnv, store: SettingsFile): Promise<void> {
-  await requireKv(env).put(STORE_KEY, JSON.stringify(store));
+  await writeJsonToBlob(STORE_KEY, store);
 }
 
 async function getManagedSettings(env: EdgeEnv): Promise<ManagedSettings> {
@@ -405,10 +396,7 @@ async function readFontCache(
   env: EdgeEnv,
   docUrl?: string,
 ): Promise<FontCacheEntry | null> {
-  const kv = env.FONTSEZ_KV;
-  if (!kv) return null;
-
-  const cache = await readJsonFromKv<FontCacheEntry>(kv, CACHE_KEY);
+  const cache = await readJsonFromBlob<FontCacheEntry>(CACHE_KEY);
   if (!cache) return null;
   if (docUrl && cache.docUrl !== docUrl) return null;
   return cache;
@@ -422,7 +410,7 @@ async function writeFontCache(
     ...result,
     cachedAt: new Date().toISOString(),
   };
-  await requireKv(env).put(CACHE_KEY, JSON.stringify(entry));
+  await writeJsonToBlob(CACHE_KEY, entry);
   return entry;
 }
 

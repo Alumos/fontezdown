@@ -709,6 +709,30 @@ export function renderIndexPage(): string {
         pointer-events: auto;
       }
 
+      .icp-footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 8px;
+        z-index: 4;
+        display: flex;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        pointer-events: none;
+      }
+
+      .icp-footer a {
+        color: inherit;
+        text-decoration: none;
+        pointer-events: auto;
+      }
+
+      .icp-footer a:hover {
+        color: var(--blue-deep);
+      }
+
       @keyframes toast {
         0% {
           opacity: 0;
@@ -762,6 +786,11 @@ export function renderIndexPage(): string {
         .to-top {
           right: 14px;
           bottom: 16px;
+        }
+
+        .icp-footer {
+          bottom: 6px;
+          font-size: 11px;
         }
       }
     </style>
@@ -890,6 +919,12 @@ export function renderIndexPage(): string {
     <button class="to-top" id="topButton" type="button" aria-label="回到顶部">
       ↑
     </button>
+
+    <footer class="icp-footer">
+      <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
+        苏ICP备2021038338号-1
+      </a>
+    </footer>
 
     <script>
       var state = {
