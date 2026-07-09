@@ -339,15 +339,25 @@ async function writeStore(env: EdgeEnv, store: SettingsFile): Promise<void> {
   await writeJsonToBlob(STORE_KEY, store);
 }
 
+async function getAdminState(env: EdgeEnv): Promise<AdminState> {
+  const envAdmin = await envAdminState(env);
+  if (envAdmin) return envAdmin;
+  return (await readStore(env)).admin;
+}
+
 async function getManagedSettings(env: EdgeEnv): Promise<ManagedSettings> {
   return (await readStore(env)).settings;
 }
 
 async function hasAdminPasscode(env: EdgeEnv): Promise<boolean> {
-  return Boolean((await readStore(env)).admin.passwordHash);
+  return Boolean((await getAdminState(env)).passwordHash);
 }
 
 async function setupAdminPasscode(env: EdgeEnv, passcode: string): Promise<void> {
+  if (await envAdminState(env)) {
+    throw new Error('后台口令由 EdgeOne 环境变量 ADMIN_PASSCODE 管理');
+  }
+
   const store = await readStore(env);
   if (store.admin.passwordHash) throw new Error('后台口令已经设置');
 
@@ -364,10 +374,10 @@ async function verifyAdminPasscode(
   env: EdgeEnv,
   passcode: string,
 ): Promise<boolean> {
-  const store = await readStore(env);
-  if (!store.admin.passwordHash || !store.admin.passwordSalt) return false;
-  const hash = await hashPasscode(passcode, store.admin.passwordSalt);
-  return safeEqual(hash, store.admin.passwordHash);
+  const admin = await getAdminState(env);
+  if (!admin.passwordHash || !admin.passwordSalt) return false;
+  const hash = await hashPasscode(passcode, admin.passwordSalt);
+  return safeEqual(hash, admin.passwordHash);
 }
 
 async function changeAdminPasscode(
@@ -375,10 +385,11 @@ async function changeAdminPasscode(
   currentPasscode: string,
   nextPasscode: string,
 ): Promise<void> {
-  const store = await readStore(env);
-  if (store.admin.envManaged) {
+  if (await envAdminState(env)) {
     throw new Error('当前口令由 EdgeOne 环境变量 ADMIN_PASSCODE 管理');
   }
+
+  const store = await readStore(env);
   if (!(await verifyAdminPasscode(env, currentPasscode))) {
     throw new Error('当前口令不正确');
   }
@@ -465,8 +476,8 @@ async function verifyAccessPasscode(
 }
 
 async function createAdminSessionCookie(env: EdgeEnv): Promise<string> {
-  const store = await readStore(env);
-  return createSessionCookie(ADMIN_SESSION_COOKIE, store.admin.sessionSecret);
+  const admin = await getAdminState(env);
+  return createSessionCookie(ADMIN_SESSION_COOKIE, admin.sessionSecret);
 }
 
 async function createAccessSessionCookie(env: EdgeEnv): Promise<string> {
@@ -503,12 +514,12 @@ async function isAdminRequest(
   env: EdgeEnv,
   cookieHeader: string | undefined,
 ): Promise<boolean> {
-  const store = await readStore(env);
-  if (!store.admin.passwordHash) return false;
+  const admin = await getAdminState(env);
+  if (!admin.passwordHash) return false;
   return isSessionCookieValid(
     cookieHeader,
     ADMIN_SESSION_COOKIE,
-    store.admin.sessionSecret,
+    admin.sessionSecret,
   );
 }
 
@@ -683,7 +694,6 @@ app.get('/api/admin/status', async (c) => {
     code: 0,
     data: {
       hasAdminPasscode: await hasAdminPasscode(c.env),
-      hasAccessPasscodes: await hasAccessPasscodes(c.env),
       isAuthenticated: await isAdminRequest(c.env, c.req.header('cookie')),
     },
   });
@@ -985,21 +995,21 @@ app.all('*', (c) => {
   return c.json({ success: false, message: '接口不存在' }, 404);
 });
 
-export function onRequest(context: {
+export async function onRequest(context: {
   request: Request;
   env: EdgeEnv;
-}): Response | Promise<Response> {
-  return Promise.resolve(app.fetch(context.request, context.env)).catch(
-    (error: unknown) => {
-      console.error('EdgeOne 函数未捕获错误:', errorMessage(error));
-      return jsonResponse(
-        {
-          code: 1,
-          msg: 'EdgeOne 函数执行失败',
-          error: errorMessage(error),
-        },
-        500,
-      );
-    },
-  );
+}): Promise<Response> {
+  try {
+    return await app.fetch(context.request, context.env);
+  } catch (error: unknown) {
+    console.error('EdgeOne 函数未捕获错误:', errorMessage(error));
+    return jsonResponse(
+      {
+        code: 1,
+        msg: 'EdgeOne 函数执行失败',
+        error: errorMessage(error),
+      },
+      500,
+    );
+  }
 }

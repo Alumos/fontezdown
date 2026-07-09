@@ -514,6 +514,7 @@ export function renderAdminPage(): string {
             showAuth('login');
           }
         } catch (error) {
+          showAuth('login');
           setStatus(error.message, 'err');
         }
       }
