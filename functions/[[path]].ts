@@ -1,11 +1,9 @@
-import { parseLanzouUrl } from '../src/utils/lanzou/lanzouParser.js';
 import { renderAdminPage } from '../src/ui/adminPage.js';
 import { renderIndexPage } from '../src/ui/indexPage.js';
-import {
-  type FontLinkItem,
-  type TencentCredentials,
-  type TencentDocSyncResult,
-  syncTencentDocFonts,
+import type {
+  FontLinkItem,
+  TencentCredentials,
+  TencentDocSyncResult,
 } from '../src/utils/tencentDocs.js';
 import type { ParseSuccessData } from '../src/utils/types.js';
 import { Hono, type Context } from 'hono';
@@ -59,11 +57,6 @@ interface SettingsFile {
   access?: AccessState;
 }
 
-interface SessionPayload {
-  exp: number;
-  iat: number;
-}
-
 interface FontCacheEntry extends TencentDocSyncResult {
   cachedAt: string;
 }
@@ -99,7 +92,6 @@ const CACHE_KEY = 'cache/fonts.json';
 const ADMIN_SESSION_COOKIE = 'fontsez_admin';
 const ACCESS_SESSION_COOKIE = 'fontsez_access';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
-const PBKDF2_ITERATIONS = 100000;
 
 const app = new Hono<{ Bindings: EdgeEnv }>();
 
@@ -107,9 +99,10 @@ function stringValue(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function envValue(env: EdgeEnv, ...keys: (keyof EdgeEnv)[]): string {
+function envValue(env: EdgeEnv | undefined, ...keys: (keyof EdgeEnv)[]): string {
+  const source = env || {};
   for (const key of keys) {
-    const value = env[key];
+    const value = source[key];
     if (typeof value === 'string' && value) return value;
   }
   return '';
@@ -134,6 +127,26 @@ async function getBlobStore() {
   return getStore(BLOB_STORE_NAME);
 }
 
+async function parseLanzouUrlDynamic(
+  options: Parameters<
+    typeof import('../src/utils/lanzou/lanzouParser.js').parseLanzouUrl
+  >[0],
+) {
+  const { parseLanzouUrl } = await import(
+    '../src/utils/lanzou/lanzouParser.js'
+  );
+  return parseLanzouUrl(options);
+}
+
+async function syncTencentDocFontsDynamic(
+  options: Parameters<
+    typeof import('../src/utils/tencentDocs.js').syncTencentDocFonts
+  >[0],
+) {
+  const { syncTencentDocFonts } = await import('../src/utils/tencentDocs.js');
+  return syncTencentDocFonts(options);
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -149,7 +162,13 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 function randomHex(bytes: number): string {
   const data = new Uint8Array(bytes);
-  crypto.getRandomValues(data);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(data);
+  } else {
+    for (let index = 0; index < data.length; index += 1) {
+      data[index] = Math.floor(Math.random() * 256);
+    }
+  }
   return [...data].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
@@ -157,38 +176,149 @@ function randomReadablePasscode(): string {
   return randomHex(4).toUpperCase();
 }
 
+const SHA256_K = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b,
+  0x59f111f1, 0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01,
+  0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7,
+  0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc,
+  0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152,
+  0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+  0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+  0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819,
+  0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116, 0x1e376c08,
+  0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f,
+  0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+  0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+];
+
+function utf8Bytes(value: string): number[] {
+  const bytes: number[] = [];
+  for (const char of value) {
+    const code = char.codePointAt(0) || 0;
+    if (code < 0x80) {
+      bytes.push(code);
+    } else if (code < 0x800) {
+      bytes.push(0xc0 | (code >> 6), 0x80 | (code & 0x3f));
+    } else if (code < 0x10000) {
+      bytes.push(
+        0xe0 | (code >> 12),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    } else {
+      bytes.push(
+        0xf0 | (code >> 18),
+        0x80 | ((code >> 12) & 0x3f),
+        0x80 | ((code >> 6) & 0x3f),
+        0x80 | (code & 0x3f),
+      );
+    }
+  }
+  return bytes;
+}
+
+function rotateRight(value: number, bits: number): number {
+  return (value >>> bits) | (value << (32 - bits));
+}
+
+function itemAt(items: number[], index: number): number {
+  return items[index] ?? 0;
+}
+
+function sha256Hex(value: string): string {
+  const bytes = utf8Bytes(value);
+  const bitLength = bytes.length * 8;
+  bytes.push(0x80);
+  while (bytes.length % 64 !== 56) bytes.push(0);
+
+  const high = Math.floor(bitLength / 0x100000000);
+  const low = bitLength >>> 0;
+  for (let shift = 24; shift >= 0; shift -= 8) {
+    bytes.push((high >>> shift) & 0xff);
+  }
+  for (let shift = 24; shift >= 0; shift -= 8) {
+    bytes.push((low >>> shift) & 0xff);
+  }
+
+  const hash = [
+    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f,
+    0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+  ];
+  const words = new Array<number>(64);
+
+  for (let offset = 0; offset < bytes.length; offset += 64) {
+    for (let index = 0; index < 16; index += 1) {
+      const wordOffset = offset + index * 4;
+      words[index] =
+        ((itemAt(bytes, wordOffset) << 24) |
+          (itemAt(bytes, wordOffset + 1) << 16) |
+          (itemAt(bytes, wordOffset + 2) << 8) |
+          itemAt(bytes, wordOffset + 3)) >>>
+        0;
+    }
+    for (let index = 16; index < 64; index += 1) {
+      const s0 =
+        rotateRight(itemAt(words, index - 15), 7) ^
+        rotateRight(itemAt(words, index - 15), 18) ^
+        (itemAt(words, index - 15) >>> 3);
+      const s1 =
+        rotateRight(itemAt(words, index - 2), 17) ^
+        rotateRight(itemAt(words, index - 2), 19) ^
+        (itemAt(words, index - 2) >>> 10);
+      words[index] =
+        (itemAt(words, index - 16) + s0 + itemAt(words, index - 7) + s1) >>>
+        0;
+    }
+
+    let a = itemAt(hash, 0);
+    let b = itemAt(hash, 1);
+    let c = itemAt(hash, 2);
+    let d = itemAt(hash, 3);
+    let e = itemAt(hash, 4);
+    let f = itemAt(hash, 5);
+    let g = itemAt(hash, 6);
+    let h = itemAt(hash, 7);
+    for (let index = 0; index < 64; index += 1) {
+      const s1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+      const ch = (e & f) ^ (~e & g);
+      const temp1 =
+        (h + s1 + ch + itemAt(SHA256_K, index) + itemAt(words, index)) >>> 0;
+      const s0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (s0 + maj) >>> 0;
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) >>> 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) >>> 0;
+    }
+
+    hash[0] = (itemAt(hash, 0) + a) >>> 0;
+    hash[1] = (itemAt(hash, 1) + b) >>> 0;
+    hash[2] = (itemAt(hash, 2) + c) >>> 0;
+    hash[3] = (itemAt(hash, 3) + d) >>> 0;
+    hash[4] = (itemAt(hash, 4) + e) >>> 0;
+    hash[5] = (itemAt(hash, 5) + f) >>> 0;
+    hash[6] = (itemAt(hash, 6) + g) >>> 0;
+    hash[7] = (itemAt(hash, 7) + h) >>> 0;
+  }
+
+  return hash.map((item) => item.toString(16).padStart(8, '0')).join('');
+}
+
 async function digestHex(
-  algorithm: AlgorithmIdentifier,
+  _algorithm: AlgorithmIdentifier,
   value: string,
 ): Promise<string> {
-  const data = new TextEncoder().encode(value);
-  const hash = await crypto.subtle.digest(algorithm, data);
-  return [...new Uint8Array(hash)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  return sha256Hex(value);
 }
 
 async function hashPasscode(passcode: string, salt: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(passcode),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: new TextEncoder().encode(salt),
-      iterations: PBKDF2_ITERATIONS,
-    },
-    key,
-    256,
-  );
-  return [...new Uint8Array(bits)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  return digestHex('SHA-256', `fontsez-passcode:${salt}:${passcode}`);
 }
 
 function safeEqual(a: string, b: string): boolean {
@@ -200,74 +330,14 @@ function safeEqual(a: string, b: string): boolean {
   return result === 0;
 }
 
-function base64UrlFromBytes(bytes: Uint8Array): string {
-  let text = '';
-  for (const byte of bytes) text += String.fromCharCode(byte);
-  return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function base64UrlEncode(value: string): string {
-  return base64UrlFromBytes(new TextEncoder().encode(value));
-}
-
-function base64UrlDecode(value: string): string {
-  const padded = `${value.replace(/-/g, '+').replace(/_/g, '/')}${'='.repeat(
-    (4 - (value.length % 4)) % 4,
-  )}`;
-  const bytes = Uint8Array.from(atob(padded), (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-async function signPayload(payload: string, secret: string): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(secret),
-    { name: 'HMAC', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const signature = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(payload),
-  );
-  return base64UrlFromBytes(new Uint8Array(signature));
-}
-
-async function encodeSession(
-  payload: SessionPayload,
-  secret: string,
-): Promise<string> {
-  const body = base64UrlEncode(JSON.stringify(payload));
-  return `${body}.${await signPayload(body, secret)}`;
-}
-
-async function decodeSession(
-  token: string,
-  secret: string,
-): Promise<SessionPayload | null> {
-  const [body, signature] = token.split('.');
-  if (!body || !signature) return null;
-  if (!safeEqual(await signPayload(body, secret), signature)) return null;
-
-  try {
-    const payload = JSON.parse(base64UrlDecode(body)) as SessionPayload;
-    if (!payload.exp || payload.exp < Date.now()) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
 async function envAdminState(env: EdgeEnv): Promise<AdminState | null> {
   const passcode = envValue(env, 'ADMIN_PASSCODE');
   if (!passcode) return null;
 
-  const salt = await digestHex('SHA-256', `fontsez:${passcode}:salt`);
-  const secret = await digestHex('SHA-256', `fontsez:${passcode}:session`);
+  const secret = await digestHex('SHA-256', `fontsez:${passcode}:admin-session`);
   return {
-    passwordHash: await hashPasscode(passcode, salt),
-    passwordSalt: salt,
+    passwordHash: passcode,
+    passwordSalt: 'env',
     sessionSecret: secret,
     envManaged: true,
   };
@@ -350,6 +420,10 @@ async function getAdminState(env: EdgeEnv): Promise<AdminState> {
 }
 
 async function getManagedSettings(env: EdgeEnv): Promise<ManagedSettings> {
+  const settings = defaultSettings(env);
+  if (settings.docUrl && settings.clientId && settings.accessToken && settings.openId) {
+    return settings;
+  }
   return (await readStore(env)).settings;
 }
 
@@ -380,6 +454,7 @@ async function verifyAdminPasscode(
 ): Promise<boolean> {
   const admin = await getAdminState(env);
   if (!admin.passwordHash || !admin.passwordSalt) return false;
+  if (admin.envManaged) return safeEqual(passcode, admin.passwordHash);
   const hash = await hashPasscode(passcode, admin.passwordSalt);
   return safeEqual(hash, admin.passwordHash);
 }
@@ -410,6 +485,13 @@ function envAccessPasscodes(env: EdgeEnv): string[] {
     .split(/[\n,;]+/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+async function envAccessSessionSecret(env: EdgeEnv): Promise<string> {
+  return digestHex(
+    'SHA-256',
+    `fontsez:${envAccessPasscodes(env).join('\n')}:access-session`,
+  );
 }
 
 async function listAccessPasscodes(env: EdgeEnv): Promise<
@@ -503,7 +585,17 @@ async function createAdminSessionCookie(env: EdgeEnv): Promise<string> {
   return createSessionCookie(ADMIN_SESSION_COOKIE, admin.sessionSecret);
 }
 
-async function createAccessSessionCookie(env: EdgeEnv): Promise<string> {
+async function createAccessSessionCookie(
+  env: EdgeEnv,
+  passcode: string,
+): Promise<string> {
+  if (envAccessPasscodes(env).includes(passcode)) {
+    return createSessionCookie(
+      ACCESS_SESSION_COOKIE,
+      await envAccessSessionSecret(env),
+    );
+  }
+
   const store = await readStore(env);
   return createSessionCookie(
     ACCESS_SESSION_COOKIE,
@@ -516,13 +608,9 @@ async function createSessionCookie(
   secret: string,
 ): Promise<string> {
   const now = Date.now();
-  const token = await encodeSession(
-    {
-      iat: now,
-      exp: now + SESSION_TTL_MS,
-    },
-    secret,
-  );
+  const expiresAt = now + SESSION_TTL_MS;
+  const signature = await digestHex('SHA-256', `${secret}:${expiresAt}`);
+  const token = `${expiresAt.toString(36)}.${signature}`;
 
   return `${name}=${token}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${
     SESSION_TTL_MS / 1000
@@ -537,6 +625,8 @@ async function isAdminRequest(
   env: EdgeEnv,
   cookieHeader: string | undefined,
 ): Promise<boolean> {
+  if (!cookieHeader?.includes(`${ADMIN_SESSION_COOKIE}=`)) return false;
+
   const admin = await getAdminState(env);
   if (!admin.passwordHash) return false;
   return isSessionCookieValid(
@@ -550,6 +640,16 @@ async function isAccessRequest(
   env: EdgeEnv,
   cookieHeader: string | undefined,
 ): Promise<boolean> {
+  if (!cookieHeader?.includes(`${ACCESS_SESSION_COOKIE}=`)) return false;
+
+  if (envAccessPasscodes(env).length) {
+    return isSessionCookieValid(
+      cookieHeader,
+      ACCESS_SESSION_COOKIE,
+      await envAccessSessionSecret(env),
+    );
+  }
+
   const store = await readStore(env);
   const secret = store.access?.sessionSecret;
   if (!secret || !store.access?.passcodes.length) {
@@ -577,7 +677,16 @@ async function isSessionCookieValid(
   );
 
   const token = cookies[cookieName];
-  return Boolean(token && (await decodeSession(token, secret)));
+  if (!token) return false;
+
+  const [expiresAtText, signature] = token.split('.');
+  const expiresAt = Number.parseInt(expiresAtText || '', 36);
+  if (!expiresAt || expiresAt < Date.now() || !signature) return false;
+
+  return safeEqual(
+    await digestHex('SHA-256', `${secret}:${expiresAt}`),
+    signature,
+  );
 }
 
 async function publicConfigStatus(env: EdgeEnv): Promise<{
@@ -586,6 +695,19 @@ async function publicConfigStatus(env: EdgeEnv): Promise<{
   hasTencentCredentials: boolean;
   hasLanzouPassword: boolean;
 }> {
+  const settings = defaultSettings(env);
+  const hasEnvSettings = Boolean(
+    settings.docUrl && settings.clientId && settings.accessToken && settings.openId,
+  );
+  if (hasEnvSettings) {
+    return {
+      hasAdminPasscode: await hasAdminPasscode(env),
+      hasDocUrl: true,
+      hasTencentCredentials: true,
+      hasLanzouPassword: Boolean(settings.lanzouPwd),
+    };
+  }
+
   const store = await readStore(env);
   return {
     hasAdminPasscode: Boolean(store.admin.passwordHash),
@@ -672,11 +794,12 @@ app.get('/admin', (c) => c.html(renderAdminPage()));
 
 app.get('/api/config', async (c) => {
   const status = await publicConfigStatus(c.env);
+  const hasEnvAccessPasscodes = Boolean(envAccessPasscodes(c.env).length);
   return c.json({
     code: 0,
     data: {
       ...status,
-      hasAccessPasscodes: await hasAccessPasscodes(c.env),
+      hasAccessPasscodes: hasEnvAccessPasscodes || (await hasAccessPasscodes(c.env)),
       isReady: status.hasDocUrl && status.hasTencentCredentials,
     },
   });
@@ -684,10 +807,11 @@ app.get('/api/config', async (c) => {
 
 app.get('/api/access/status', async (c) => {
   const cookieHeader = c.req.header('cookie');
+  const hasEnvAccessPasscodes = Boolean(envAccessPasscodes(c.env).length);
   return c.json({
     code: 0,
     data: {
-      hasAccessPasscodes: await hasAccessPasscodes(c.env),
+      hasAccessPasscodes: hasEnvAccessPasscodes || (await hasAccessPasscodes(c.env)),
       isAuthenticated:
         (await isAdminRequest(c.env, cookieHeader)) ||
         (await isAccessRequest(c.env, cookieHeader)),
@@ -703,7 +827,7 @@ app.post('/api/access/login', async (c) => {
     return c.json({ code: 1, msg: '访问口令不正确' }, 401);
   }
 
-  c.header('Set-Cookie', await createAccessSessionCookie(c.env));
+  c.header('Set-Cookie', await createAccessSessionCookie(c.env, passcode));
   return c.json({ code: 0, msg: '登录成功' });
 });
 
@@ -865,7 +989,7 @@ app.post('/api/fonts/sync', async (c) => {
   const docUrl = settings.docUrl;
 
   try {
-    const data = await syncTencentDocFonts({
+    const data = await syncTencentDocFontsDynamic({
       docUrl,
       credentials: settingsCredentials(settings),
     });
@@ -941,7 +1065,7 @@ app.post('/api/lanzou/parse', async (c) => {
   }
 
   try {
-    const result = await parseLanzouUrl({
+    const result = await parseLanzouUrlDynamic({
       url,
       pwd,
       type: 'json',
@@ -998,7 +1122,7 @@ app.all('/lanzou', async (c) => {
     const pwd = c.req.query('pwd') || (await getManagedSettings(c.env)).lanzouPwd;
     const type = c.req.query('type') || 'json';
 
-    const data = await parseLanzouUrl({
+    const data = await parseLanzouUrlDynamic({
       url,
       pwd,
       type,
