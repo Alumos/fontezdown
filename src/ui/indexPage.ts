@@ -1321,10 +1321,15 @@ export function renderIndexPage(): string {
           applyFontData(data);
           if (data.fallbackSource === 'seed') {
             setStatus(
-              '腾讯文档内容过大，已显示内置缓存，发现 ' +
+              '已显示内置缓存，发现 ' +
                 state.items.length +
                 ' 项',
               'ok',
+            );
+          } else if (data.cacheError) {
+            setStatus(
+              '同步成功，但缓存写入失败：' + data.cacheError,
+              'err',
             );
           } else if (data.syncError) {
             setStatus(

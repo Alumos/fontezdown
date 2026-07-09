@@ -67,8 +67,21 @@ interface FontCacheEntry extends TencentDocSyncResult {
 interface FontCacheResponse extends FontCacheEntry {
   fromCache?: boolean;
   syncError?: string;
+  cacheError?: string;
   fallbackSource?: 'blob-cache' | 'seed';
   seedCount?: number;
+}
+
+interface FontCacheMeta {
+  version: 2;
+  cacheId: string;
+  docUrl: string;
+  encodedId: string;
+  fileId: string;
+  fetchedAt: string;
+  cachedAt: string;
+  itemCount: number;
+  chunkCount: number;
 }
 
 interface LanzouParseRequest {
@@ -99,6 +112,9 @@ interface AdminSettingsRequest {
 const BLOB_STORE_NAME = 'fontezdown';
 const STORE_KEY = 'config/settings.json';
 const CACHE_KEY = 'cache/fonts.json';
+const CACHE_META_KEY = 'cache/fonts.meta.json';
+const CACHE_ITEMS_PREFIX = 'cache/fonts.items.';
+const FONT_CACHE_CHUNK_SIZE = 150;
 const ADMIN_SESSION_COOKIE = 'fontsez_admin';
 const ACCESS_SESSION_COOKIE = 'fontsez_access';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
@@ -392,6 +408,31 @@ async function writeJsonToBlob(key: string, value: unknown): Promise<void> {
   } catch (error) {
     throw new Error(`EdgeOne Blob 写入失败：${errorMessage(error)}`);
   }
+}
+
+async function deleteBlob(key: string): Promise<void> {
+  const store = await getBlobStore();
+  await store.delete(key);
+}
+
+async function deleteOptionalBlob(key: string): Promise<void> {
+  try {
+    await deleteBlob(key);
+  } catch (error) {
+    console.error('EdgeOne Blob 删除失败:', errorMessage(error));
+  }
+}
+
+async function listBlobKeys(prefix: string): Promise<string[]> {
+  const store = await getBlobStore();
+  const result = (await store.list({
+    prefix,
+    consistency: 'strong',
+  })) as { blobs?: { key?: string }[] };
+
+  return (result.blobs || [])
+    .map((blob) => blob.key)
+    .filter((key): key is string => typeof key === 'string' && Boolean(key));
 }
 
 async function readStore(env: EdgeEnv): Promise<SettingsFile> {
@@ -733,10 +774,86 @@ async function readFontCache(
   env: EdgeEnv,
   docUrl?: string,
 ): Promise<FontCacheEntry | null> {
+  const chunkedCache = await readChunkedFontCache();
+  if (chunkedCache) {
+    if (docUrl && chunkedCache.docUrl !== docUrl) return null;
+    return chunkedCache;
+  }
+
   const cache = await readOptionalJsonFromBlob<FontCacheEntry>(CACHE_KEY);
   if (!cache) return null;
   if (docUrl && cache.docUrl !== docUrl) return null;
   return cache;
+}
+
+function fontCacheChunkKey(cacheId: string, index: number): string {
+  return `${CACHE_ITEMS_PREFIX}${cacheId}.${index}.json`;
+}
+
+function isFontCacheMeta(value: unknown): value is FontCacheMeta {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as Partial<FontCacheMeta>;
+  return Boolean(
+    record.version === 2 &&
+      stringValue(record.cacheId) &&
+      typeof record.docUrl === 'string' &&
+      stringValue(record.encodedId) &&
+      stringValue(record.fileId) &&
+      stringValue(record.fetchedAt) &&
+      stringValue(record.cachedAt) &&
+      Number.isInteger(record.itemCount) &&
+      Number.isInteger(record.chunkCount) &&
+      Number(record.itemCount) >= 0 &&
+      Number(record.chunkCount) >= 0,
+  );
+}
+
+async function readChunkedFontCache(): Promise<FontCacheEntry | null> {
+  const meta = await readOptionalJsonFromBlob<unknown>(CACHE_META_KEY);
+  if (!isFontCacheMeta(meta)) return null;
+
+  const chunks = await Promise.all(
+    Array.from({ length: meta.chunkCount }, (_, index) =>
+      readOptionalJsonFromBlob<FontLinkItem[]>(
+        fontCacheChunkKey(meta.cacheId, index),
+      ),
+    ),
+  );
+
+  if (chunks.some((chunk) => !Array.isArray(chunk))) return null;
+  const items = chunks.flatMap((chunk) => chunk || []);
+  if (items.length !== meta.itemCount) return null;
+
+  return {
+    docUrl: meta.docUrl,
+    encodedId: meta.encodedId,
+    fileId: meta.fileId,
+    fetchedAt: meta.fetchedAt,
+    cachedAt: meta.cachedAt,
+    items,
+  };
+}
+
+function fontCacheChunks(items: FontLinkItem[]): FontLinkItem[][] {
+  const chunks: FontLinkItem[][] = [];
+  for (let index = 0; index < items.length; index += FONT_CACHE_CHUNK_SIZE) {
+    chunks.push(items.slice(index, index + FONT_CACHE_CHUNK_SIZE));
+  }
+  return chunks;
+}
+
+async function deleteStaleFontCacheChunks(activeCacheId: string): Promise<void> {
+  try {
+    const keys = await listBlobKeys(CACHE_ITEMS_PREFIX);
+    const activePrefix = `${CACHE_ITEMS_PREFIX}${activeCacheId}.`;
+    await Promise.all(
+      keys
+        .filter((key) => !key.startsWith(activePrefix))
+        .map((key) => deleteOptionalBlob(key)),
+    );
+  } catch (error) {
+    console.error('EdgeOne 旧字体缓存分片清理失败:', errorMessage(error));
+  }
 }
 
 async function writeFontCache(
@@ -747,8 +864,34 @@ async function writeFontCache(
     ...result,
     cachedAt: new Date().toISOString(),
   };
-  await writeJsonToBlob(CACHE_KEY, entry);
+
+  const cacheId = randomHex(8);
+  const chunks = fontCacheChunks(entry.items);
+  await Promise.all(
+    chunks.map((chunk, index) =>
+      writeJsonToBlob(fontCacheChunkKey(cacheId, index), chunk),
+    ),
+  );
+
+  await writeJsonToBlob(CACHE_META_KEY, {
+    version: 2,
+    cacheId,
+    docUrl: entry.docUrl,
+    encodedId: entry.encodedId,
+    fileId: entry.fileId,
+    fetchedAt: entry.fetchedAt,
+    cachedAt: entry.cachedAt,
+    itemCount: entry.items.length,
+    chunkCount: chunks.length,
+  } satisfies FontCacheMeta);
+  await deleteOptionalBlob(CACHE_KEY);
+  await deleteStaleFontCacheChunks(cacheId);
+
   return entry;
+}
+
+function isSeedCacheEntry(cache: FontCacheEntry): boolean {
+  return cache.fileId === 'seed-cache';
 }
 
 async function seedFontCache(
@@ -768,7 +911,7 @@ async function seedFontCache(
   };
 
   try {
-    await writeJsonToBlob(CACHE_KEY, entry);
+    await writeFontCache(env, entry);
   } catch (error) {
     console.error('EdgeOne 种子缓存写入失败:', errorMessage(error));
   }
@@ -1075,12 +1218,47 @@ async function handleRequest(request: Request, env: EdgeEnv): Promise<Response> 
 
     const settings = await getManagedSettings(env);
     const docUrl = settings.docUrl;
+    let data: TencentDocSyncResult;
 
     try {
-      const data = await syncTencentDocFontsDynamic({
+      data = await syncTencentDocFontsDynamic({
         docUrl,
         credentials: settingsCredentials(settings),
       });
+    } catch (error) {
+      const message = errorMessage(error);
+      const isOverSize = /oversize|内容过大/i.test(message);
+      const cache = await readFontCache(env, docUrl);
+      if (cache) {
+        const isSeedCache = isSeedCacheEntry(cache);
+        return jsonResponse({
+          code: 0,
+          msg: isOverSize
+            ? `腾讯文档内容过大，已使用${isSeedCache ? '内置' : '上次'}缓存：${message}`
+            : `同步失败，已使用${isSeedCache ? '内置' : '上次'}缓存：${message}`,
+          data: {
+            ...cache,
+            fromCache: true,
+            fallbackSource: isSeedCache ? 'seed' : 'blob-cache',
+            seedCount: isSeedCache ? FONT_SEED_COUNT : undefined,
+            syncError: message,
+          },
+        });
+      }
+
+      if (isOverSize) {
+        const seedCache = await seedFontCache(env, settings, message);
+        return jsonResponse({
+          code: 0,
+          msg: `腾讯文档内容过大，已使用内置种子缓存（${FONT_SEED_COUNT} 项）：${message}`,
+          data: seedCache,
+        });
+      }
+
+      return jsonResponse({ code: 1, msg: `同步失败：${message}` }, 400);
+    }
+
+    try {
       const cache = await writeFontCache(env, data);
 
       return jsonResponse({
@@ -1093,30 +1271,16 @@ async function handleRequest(request: Request, env: EdgeEnv): Promise<Response> 
       });
     } catch (error) {
       const message = errorMessage(error);
-      const cache = await readFontCache(env, docUrl);
-      if (cache) {
-        return jsonResponse({
-          code: 0,
-          msg: `同步失败，已使用上次缓存：${message}`,
-          data: {
-            ...cache,
-            fromCache: true,
-            fallbackSource: 'blob-cache',
-            syncError: message,
-          },
-        });
-      }
-
-      if (/oversize/i.test(message)) {
-        const seedCache = await seedFontCache(env, settings, message);
-        return jsonResponse({
-          code: 0,
-          msg: `腾讯文档内容过大，已使用内置种子缓存（${FONT_SEED_COUNT} 项）：${message}`,
-          data: seedCache,
-        });
-      }
-
-      return jsonResponse({ code: 1, msg: `同步失败：${message}` }, 400);
+      return jsonResponse({
+        code: 0,
+        msg: `同步成功，但缓存写入失败：${message}`,
+        data: {
+          ...data,
+          cachedAt: data.fetchedAt,
+          fromCache: false,
+          cacheError: message,
+        },
+      });
     }
   }
 
@@ -1138,7 +1302,8 @@ async function handleRequest(request: Request, env: EdgeEnv): Promise<Response> 
         ? {
             ...cache,
             fromCache: true,
-            fallbackSource: 'blob-cache',
+            fallbackSource: isSeedCacheEntry(cache) ? 'seed' : 'blob-cache',
+            seedCount: isSeedCacheEntry(cache) ? FONT_SEED_COUNT : undefined,
           }
         : seedCache
           ? seedCache

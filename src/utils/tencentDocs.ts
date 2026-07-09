@@ -34,6 +34,8 @@ const TENCENT_SYNC_RETRY_ATTEMPTS = 3;
 const TENCENT_SYNC_RETRY_BASE_MS = 700;
 const TRANSIENT_TENCENT_ERROR_RE =
   /file service timeout|timeout|timed out|etimedout|econnreset|eai_again|socket hang up|network error/i;
+const BASE64URL_CHARS =
+  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
 const TEXT_KEYS = new Set([
   'caption',
@@ -203,9 +205,13 @@ function responseRet(payload: JsonObject): number | undefined {
 
 function responseMessage(payload: JsonObject): string {
   const message = payload.msg ?? payload.message ?? payload.errmsg;
-  return typeof message === 'string' && message
-    ? message
-    : '腾讯文档接口请求失败';
+  if (typeof message === 'string' && message) {
+    return /oversize/i.test(message)
+      ? '腾讯文档内容过大（OverSize）'
+      : message;
+  }
+
+  return '腾讯文档接口请求失败';
 }
 
 function objectValue(payload: JsonObject, key: string): JsonObject | undefined {
@@ -454,6 +460,30 @@ function normalizeLanzouUrl(url: string): string {
   return /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
 }
 
+function base64UrlEncodeUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let output = '';
+
+  for (let index = 0; index < bytes.length; index += 3) {
+    const first = bytes[index] ?? 0;
+    const second = bytes[index + 1] ?? 0;
+    const third = bytes[index + 2] ?? 0;
+
+    output += BASE64URL_CHARS.charAt(first >> 2);
+    output += BASE64URL_CHARS.charAt(((first & 0x03) << 4) | (second >> 4));
+    if (index + 1 < bytes.length) {
+      output += BASE64URL_CHARS.charAt(
+        ((second & 0x0f) << 2) | (third >> 6),
+      );
+    }
+    if (index + 2 < bytes.length) {
+      output += BASE64URL_CHARS.charAt(third & 0x3f);
+    }
+  }
+
+  return output;
+}
+
 export function extractFontLinks(lines: string[]): FontLinkItem[] {
   const items: FontLinkItem[] = [];
   const seen = new Set<string>();
@@ -478,7 +508,7 @@ export function extractFontLinks(lines: string[]): FontLinkItem[] {
 
       seen.add(key);
       items.push({
-        id: Buffer.from(key).toString('base64url'),
+        id: base64UrlEncodeUtf8(key),
         fontName,
         lanzouUrl,
         sourceLine: line,

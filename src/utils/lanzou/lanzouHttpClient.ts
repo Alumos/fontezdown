@@ -48,6 +48,18 @@ function mergeCookieString(current: string, nextCookies: string[]): string {
   return [...cookieMap.values()].join('; ');
 }
 
+function responseDataToText(data: unknown): string | unknown {
+  if (typeof data === 'string') return data;
+  if (data instanceof ArrayBuffer) return new TextDecoder().decode(data);
+  if (ArrayBuffer.isView(data)) {
+    const view = data as ArrayBufferView<ArrayBuffer>;
+    return new TextDecoder().decode(
+      new Uint8Array(view.buffer, view.byteOffset, view.byteLength),
+    );
+  }
+  return data;
+}
+
 /**
  * 创建带有 acw_sc__v2 自动处理的 HTTP 客户端
  */
@@ -100,7 +112,7 @@ function createLanzouClient(): LanzouClient {
    * @returns 是否需要重试请求
    */
   function handleAcwChallenge(data: unknown): boolean {
-    const content = Buffer.isBuffer(data) ? data.toString('utf-8') : data;
+    const content = responseDataToText(data);
     if (isAcwChallenge(content)) {
       console.log('检测到 acw_sc__v2 验证，正在处理...');
       return applyAcwCookieFromHtml(content as string);
