@@ -1,3 +1,7 @@
+import {
+  createFontSeedItems,
+  FONT_SEED_COUNT,
+} from '../src/generated/fontSeed.js';
 import { renderAdminPage } from '../src/ui/adminPage.js';
 import { renderIndexPage } from '../src/ui/indexPage.js';
 import type {
@@ -58,6 +62,13 @@ interface SettingsFile {
 
 interface FontCacheEntry extends TencentDocSyncResult {
   cachedAt: string;
+}
+
+interface FontCacheResponse extends FontCacheEntry {
+  fromCache?: boolean;
+  syncError?: string;
+  fallbackSource?: 'blob-cache' | 'seed';
+  seedCount?: number;
 }
 
 interface LanzouParseRequest {
@@ -740,6 +751,47 @@ async function writeFontCache(
   return entry;
 }
 
+async function seedFontCache(
+  env: EdgeEnv,
+  settings: ManagedSettings,
+  syncError: string,
+): Promise<FontCacheResponse> {
+  const now = new Date().toISOString();
+  const docUrl = settings.docUrl;
+  const entry: FontCacheEntry = {
+    docUrl,
+    encodedId: docUrl ? extractDocIdFallback(docUrl) : 'seed',
+    fileId: 'seed-cache',
+    fetchedAt: now,
+    cachedAt: now,
+    items: createFontSeedItems(),
+  };
+
+  try {
+    await writeJsonToBlob(CACHE_KEY, entry);
+  } catch (error) {
+    console.error('EdgeOne 种子缓存写入失败:', errorMessage(error));
+  }
+
+  return {
+    ...entry,
+    fromCache: true,
+    fallbackSource: 'seed',
+    seedCount: FONT_SEED_COUNT,
+    syncError,
+  };
+}
+
+function extractDocIdFallback(docUrl: string): string {
+  try {
+    const url = new URL(docUrl);
+    const parts = url.pathname.split('/').filter(Boolean);
+    return decodeURIComponent(parts.at(-1) || docUrl);
+  } catch {
+    return docUrl;
+  }
+}
+
 function settingsCredentials(settings: ManagedSettings): TencentCredentials {
   return {
     clientId: settings.clientId,
@@ -1049,8 +1101,18 @@ async function handleRequest(request: Request, env: EdgeEnv): Promise<Response> 
           data: {
             ...cache,
             fromCache: true,
+            fallbackSource: 'blob-cache',
             syncError: message,
           },
+        });
+      }
+
+      if (/oversize/i.test(message)) {
+        const seedCache = await seedFontCache(env, settings, message);
+        return jsonResponse({
+          code: 0,
+          msg: `腾讯文档内容过大，已使用内置种子缓存（${FONT_SEED_COUNT} 项）：${message}`,
+          data: seedCache,
         });
       }
 
@@ -1065,15 +1127,21 @@ async function handleRequest(request: Request, env: EdgeEnv): Promise<Response> 
     const settings = await getManagedSettings(env);
     const docUrl = settings.docUrl;
     const cache = await readFontCache(env, docUrl);
+    const seedCache = cache
+      ? null
+      : await seedFontCache(env, settings, '腾讯文档内容过大，使用内置种子缓存');
 
     return jsonResponse({
       code: 0,
-      msg: cache ? '读取缓存成功' : '暂无缓存',
+      msg: cache || seedCache ? '读取缓存成功' : '暂无缓存',
       data: cache
         ? {
             ...cache,
             fromCache: true,
+            fallbackSource: 'blob-cache',
           }
+        : seedCache
+          ? seedCache
         : {
             docUrl,
             items: [] as FontLinkItem[],

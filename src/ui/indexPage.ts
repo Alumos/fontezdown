@@ -1319,7 +1319,14 @@ export function renderIndexPage(): string {
         try {
           var data = await postJson('/api/fonts/sync', {});
           applyFontData(data);
-          if (data.syncError) {
+          if (data.fallbackSource === 'seed') {
+            setStatus(
+              '腾讯文档内容过大，已显示内置缓存，发现 ' +
+                state.items.length +
+                ' 项',
+              'ok',
+            );
+          } else if (data.syncError) {
             setStatus(
               '刷新失败，已显示上次缓存：' + data.syncError,
               'err',
@@ -1371,8 +1378,11 @@ export function renderIndexPage(): string {
         if (data.fromCache) {
           applyFontData(data);
           var timeText = formatTime(data.fetchedAt || data.cachedAt);
+          var cacheLabel =
+            data.fallbackSource === 'seed' ? '内置缓存' : '缓存';
           setStatus(
-            '已载入缓存' +
+            '已载入' +
+              cacheLabel +
               (timeText ? '（' + timeText + '）' : '') +
               '，发现 ' +
               state.items.length +
