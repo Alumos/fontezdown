@@ -9,6 +9,45 @@ import axios, { type AxiosRequestConfig, type AxiosResponse } from 'axios';
 const UserAgent =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36';
 
+function cookiePair(value: string): string | null {
+  const pair = value.trim().split(';')[0];
+  return pair || null;
+}
+
+function cookieHeaderParts(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item): item is string => typeof item === 'string')
+      .map(cookiePair)
+      .filter((item): item is string => Boolean(item));
+  }
+
+  if (typeof value === 'string') {
+    return value
+      .split(/,(?=\s*[^;,=\s]+=[^;,]+)/)
+      .map(cookiePair)
+      .filter((item): item is string => Boolean(item));
+  }
+
+  return [];
+}
+
+function mergeCookieString(current: string, nextCookies: string[]): string {
+  const cookieMap = new Map<string, string>();
+  const addCookie = (cookie: string) => {
+    const name = cookie.split('=')[0]?.trim();
+    if (name) cookieMap.set(name, cookie);
+  };
+
+  current
+    .split(';')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach(addCookie);
+  nextCookies.forEach(addCookie);
+  return [...cookieMap.values()].join('; ');
+}
+
 /**
  * 创建带有 acw_sc__v2 自动处理的 HTTP 客户端
  */
@@ -31,8 +70,9 @@ function createLanzouClient(): LanzouClient {
   // 响应拦截器：自动保存 Cookie
   instance.interceptors.response.use((response) => {
     const setCookie = response.headers['set-cookie'];
-    if (setCookie && setCookie.length) {
-      globalCookies = setCookie.map((c) => c.split(';')[0]).join('; ');
+    const cookies = cookieHeaderParts(setCookie);
+    if (cookies.length) {
+      globalCookies = mergeCookieString(globalCookies, cookies);
     }
     return response;
   });
@@ -183,18 +223,15 @@ function randIP(): string {
 /**
  * 获取请求头
  */
-function getHeaders(referer: string, host = ''): Record<string, string> {
+function getHeaders(referer: string): Record<string, string> {
   const headers: Record<string, string> = {
     'User-Agent': UserAgent,
     'X-FORWARDED-FOR': randIP(),
     'CLIENT-IP': randIP(),
     Referer: referer,
-    Connection: 'Keep-Alive',
     Accept: '*/*',
     'Accept-Language': 'zh-cn',
   };
-
-  if (host) headers.Host = host;
 
   return headers;
 }

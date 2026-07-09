@@ -1196,6 +1196,17 @@ export function renderIndexPage(): string {
           .join('');
       }
 
+      function responseErrorMessage(data, fallback) {
+        var message = (data && (data.msg || data.message)) || fallback;
+        var detail =
+          data &&
+          (data.error ||
+            (typeof data.data === 'string' ? data.data : '') ||
+            (data.data && data.data.error ? data.data.error : ''));
+        if (detail && detail !== message) return message + '：' + detail;
+        return message;
+      }
+
       async function requestJson(url, options) {
         var response = await fetch(url, options || {});
         var data = {};
@@ -1206,12 +1217,13 @@ export function renderIndexPage(): string {
         }
 
         if (response.status === 401) {
-          showAuth(data.msg || '需要登录后访问', 'err');
-          throw new Error(data.msg || '需要登录后访问');
+          var authMessage = responseErrorMessage(data, '需要登录后访问');
+          showAuth(authMessage, 'err');
+          throw new Error(authMessage);
         }
 
         if (!response.ok || data.code !== 0) {
-          throw new Error(data.msg || '请求失败');
+          throw new Error(responseErrorMessage(data, '请求失败'));
         }
         return data.data;
       }

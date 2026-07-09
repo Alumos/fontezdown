@@ -443,7 +443,7 @@ async function resolveFinalUrl(
 ): Promise<string> {
   try {
     const res = await client.headWithAcwRetry(url, {
-      headers: getHeaders(url, new URL(url).hostname),
+      headers: getHeaders(url),
       maxRedirects: 0,
       validateStatus: (s: number) => s >= 200 && s < 400,
     });
