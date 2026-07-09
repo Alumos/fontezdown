@@ -291,6 +291,22 @@ export function renderIndexPage(): string {
         box-shadow: var(--shadow-soft);
       }
 
+      .btn.disabled {
+        color: var(--muted);
+        background: rgba(238, 241, 245, 0.86);
+        box-shadow: none;
+        cursor: not-allowed;
+      }
+
+      .btn.disabled::after {
+        content: none;
+      }
+
+      .btn.disabled:hover {
+        transform: none;
+        box-shadow: none;
+      }
+
       @keyframes sheen {
         to {
           transform: translateX(120%);
@@ -949,6 +965,31 @@ export function renderIndexPage(): string {
           .replace(/'/g, '&#039;');
       }
 
+      function isHttpUrl(value) {
+        try {
+          var url = new URL(String(value || ''));
+          return url.protocol === 'http:' || url.protocol === 'https:';
+        } catch {
+          return false;
+        }
+      }
+
+      function renderDownloadButton(file) {
+        if (isHttpUrl(file.downloadUrl)) {
+          return (
+            '<a class="btn green small" href="' +
+            escapeHtml(file.downloadUrl) +
+            '" target="_blank" rel="noopener">下载</a>'
+          );
+        }
+
+        return (
+          '<span class="btn small disabled" title="' +
+          escapeHtml(file.error || '未获取到下载地址') +
+          '">解析失败</span>'
+        );
+      }
+
       function formatTime(value) {
         if (!value) return '';
         var date = new Date(value);
@@ -1157,9 +1198,7 @@ export function renderIndexPage(): string {
                       '<div>' +
                       escapeHtml(file.date || '-') +
                       '</div>' +
-                      '<a class="btn green small" href="' +
-                      escapeHtml(file.downloadUrl || '#') +
-                      '" target="_blank" rel="noopener">下载</a>' +
+                      renderDownloadButton(file) +
                       '</div>'
                     );
                   })

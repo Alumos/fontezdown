@@ -227,28 +227,99 @@ async function parseFolderPage(
     if (pageItems.length < 50) break;
   }
 
-  const files = await mapWithConcurrency(items, 4, async (item) => {
-    const fileUrl = new URL(item.id, baseUrl).toString();
-    const parsed = await parseLanzouUrl({ url: fileUrl, type: 'json' });
-    const parsedFile =
-      parsed.code === 0 && 'downUrl' in parsed.data
-        ? (parsed.data as ParseSuccessData)
-        : null;
-
-    return {
-      name: stripHtml(item.name_all || parsedFile?.name || item.id),
-      size: item.size || parsedFile?.filesize || '',
-      date: item.time || '',
-      downloadUrl: parsedFile?.downUrl || '',
-      ...(parsed.code === 1 ? { error: parsed.msg } : {}),
-    };
-  });
+  const fileGroups = await mapWithConcurrency(items, 4, async (item) =>
+    parseFolderItem(item, { baseUrl, pwd }),
+  );
+  const files = fileGroups.flat();
 
   return {
     code: 0,
     msg: '解析成功',
     data: { files },
   };
+}
+
+async function parseFolderItem(
+  item: FolderAjaxItem,
+  { baseUrl, pwd }: { baseUrl: string; pwd?: string },
+): Promise<ParseFileItem[]> {
+  const itemName = stripHtml(item.name_all || item.id);
+  const fileUrl = new URL(item.id, baseUrl).toString();
+  const parsed = await parseLanzouUrlWithRetry({
+    url: fileUrl,
+    pwd,
+    type: 'json',
+  });
+
+  if (parsed.code === 0 && 'downUrl' in parsed.data) {
+    const parsedFile = parsed.data as ParseSuccessData;
+    return [
+      {
+        name: itemName || parsedFile.name,
+        size: item.size || parsedFile.filesize || '',
+        date: item.time || '',
+        downloadUrl: parsedFile.downUrl,
+      },
+    ];
+  }
+
+  if (parsed.code === 0 && 'files' in parsed.data) {
+    return parsed.data.files.map((file) => ({
+      ...file,
+      name: joinPathName(itemName, file.name),
+    }));
+  }
+
+  return [
+    {
+      name: itemName,
+      size: item.size || '',
+      date: item.time || '',
+      downloadUrl: '',
+      error: parsed.msg,
+    },
+  ];
+}
+
+async function parseLanzouUrlWithRetry(params: {
+  url: string;
+  pwd?: string;
+  type?: string;
+}): Promise<ParseResult> {
+  let result: ParseResult = { code: 1, msg: '解析失败' };
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    result = await parseLanzouUrl(params);
+    if (result.code === 0 || !shouldRetryParse(result) || attempt === 3) {
+      return result;
+    }
+
+    await delay(250 * attempt);
+  }
+
+  return result;
+}
+
+function shouldRetryParse(result: ParseResult): boolean {
+  return (
+    result.code === 1 &&
+    (result.msg === '页面无内容' ||
+      result.msg === '无法解析下载页面' ||
+      result.msg === '获取文件标识失败' ||
+      result.msg === '解析异常')
+  );
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function joinPathName(parent: string, child: string): string {
+  if (!parent) return child || '';
+  if (!child) return parent;
+  return `${parent} / ${child}`;
 }
 
 async function getFolderAjaxResult(
