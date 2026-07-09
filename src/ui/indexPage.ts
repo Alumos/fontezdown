@@ -315,7 +315,7 @@ export function renderIndexPage(): string {
 
       .summary {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 12px;
         margin: 16px 0;
       }
@@ -342,6 +342,25 @@ export function renderIndexPage(): string {
         color: var(--muted);
         font-size: 12px;
         font-weight: 700;
+      }
+
+      .stat.source strong {
+        font-size: 20px;
+        line-height: 1.15;
+        overflow-wrap: anywhere;
+      }
+
+      .stat.source strong.live {
+        color: var(--green);
+      }
+
+      .stat.source strong.cache,
+      .stat.source strong.seed {
+        color: var(--amber);
+      }
+
+      .stat.source strong.empty {
+        color: var(--muted);
       }
 
       .controls {
@@ -836,6 +855,7 @@ export function renderIndexPage(): string {
         <div class="stat"><strong id="visibleCount">0</strong><span>当前显示</span></div>
         <div class="stat"><strong id="parsedCount">0</strong><span>已解析</span></div>
         <div class="stat"><strong id="fileCount">0</strong><span>可下载文件</span></div>
+        <div class="stat source"><strong id="sourceName">未载入</strong><span id="sourceDetail">数据来源</span></div>
       </section>
 
       <section class="controls">
@@ -937,6 +957,11 @@ export function renderIndexPage(): string {
         weightFilters: [],
         searchQuery: '',
         ready: false,
+        source: {
+          label: '未载入',
+          detail: '数据来源',
+          kind: 'empty',
+        },
       };
 
       var els = {
@@ -957,6 +982,8 @@ export function renderIndexPage(): string {
         visibleCount: document.getElementById('visibleCount'),
         parsedCount: document.getElementById('parsedCount'),
         fileCount: document.getElementById('fileCount'),
+        sourceName: document.getElementById('sourceName'),
+        sourceDetail: document.getElementById('sourceDetail'),
         fontList: document.getElementById('fontList'),
         filterInputs: document.querySelectorAll('[data-filter-group]'),
       };
@@ -970,14 +997,14 @@ export function renderIndexPage(): string {
       ];
 
       var weightOptions = [
-        { id: 'w3', label: '三字重', pattern: /(?:三|3)\s*字重/ },
-        { id: 'w4', label: '四字重', pattern: /(?:四|4)\s*字重/ },
-        { id: 'w5', label: '五字重', pattern: /(?:五|5)\s*字重/ },
-        { id: 'w6', label: '六字重', pattern: /(?:六|6)\s*字重/ },
+        { id: 'w3', label: '三字重', pattern: /(?:三|3)\\s*字重/ },
+        { id: 'w4', label: '四字重', pattern: /(?:四|4)\\s*字重/ },
+        { id: 'w5', label: '五字重', pattern: /(?:五|5)\\s*字重/ },
+        { id: 'w6', label: '六字重', pattern: /(?:六|6)\\s*字重/ },
         {
           id: 'multi',
           label: '多字重',
-          pattern: /多\s*字重|(?:七|八|九|十|[7-9]|1[0-9])\s*字重/,
+          pattern: /多\\s*字重|(?:七|八|九|十|[7-9]|1[0-9])\\s*字重/,
         },
       ];
 
@@ -1030,6 +1057,50 @@ export function renderIndexPage(): string {
         var date = new Date(value);
         if (Number.isNaN(date.getTime())) return '';
         return date.toLocaleString('zh-CN', { hour12: false });
+      }
+
+      function emptySourceInfo() {
+        return {
+          label: '未载入',
+          detail: '数据来源',
+          kind: 'empty',
+        };
+      }
+
+      function sourceTimeText(data) {
+        if (!data || data.fallbackSource === 'seed') return '';
+        return formatTime(data.fetchedAt || data.cachedAt);
+      }
+
+      function sourceInfoForData(data) {
+        if (!data || !Array.isArray(data.items)) return emptySourceInfo();
+
+        var timeText = sourceTimeText(data);
+        if (data.fallbackSource === 'seed') {
+          return {
+            label: '内置缓存',
+            detail: '不是最新文档',
+            kind: 'seed',
+          };
+        }
+
+        if (data.fromCache) {
+          return {
+            label: '上次缓存',
+            detail: timeText ? '缓存时间 ' + timeText : '不是本次刷新',
+            kind: 'cache',
+          };
+        }
+
+        return {
+          label: '腾讯文档',
+          detail: timeText ? '本次刷新 ' + timeText : '本次刷新',
+          kind: 'live',
+        };
+      }
+
+      function errorSuffix(message) {
+        return message ? '：' + message : '';
       }
 
       function optionById(options, id) {
@@ -1089,6 +1160,7 @@ export function renderIndexPage(): string {
         state.loadingIds = {};
         state.openIds = {};
         state.filterParsed = false;
+        state.source = sourceInfoForData(data);
         render();
       }
 
@@ -1134,6 +1206,9 @@ export function renderIndexPage(): string {
         els.visibleCount.textContent = String(visibleCount);
         els.parsedCount.textContent = String(parsedOk.length);
         els.fileCount.textContent = String(files);
+        els.sourceName.textContent = state.source.label;
+        els.sourceName.className = state.source.kind || 'empty';
+        els.sourceDetail.textContent = state.source.detail;
         els.parsedFilterBtn.className =
           'btn secondary' + (state.filterParsed ? ' active' : '');
         els.clearFiltersBtn.disabled = !hasActiveListFilter();
@@ -1321,23 +1396,38 @@ export function renderIndexPage(): string {
           applyFontData(data);
           if (data.fallbackSource === 'seed') {
             setStatus(
-              '已显示内置缓存，发现 ' +
+              '刷新失败，显示内置缓存，不是最新文档，发现 ' +
                 state.items.length +
-                ' 项',
-              'ok',
+                ' 项' +
+                errorSuffix(data.syncError),
+              'err',
             );
           } else if (data.cacheError) {
             setStatus(
-              '同步成功，但缓存写入失败：' + data.cacheError,
+              '已从腾讯文档刷新，发现 ' +
+                state.items.length +
+                ' 项，但缓存写入失败：' +
+                data.cacheError,
               'err',
             );
           } else if (data.syncError) {
+            var cacheTime = sourceTimeText(data);
             setStatus(
-              '刷新失败，已显示上次缓存：' + data.syncError,
+              '刷新失败，显示上次缓存' +
+                (cacheTime ? '（' + cacheTime + '）' : '') +
+                '，不是最新文档：' +
+                data.syncError,
               'err',
             );
           } else {
-            setStatus('同步成功，发现 ' + state.items.length + ' 项', 'ok');
+            var syncTime = sourceTimeText(data);
+            setStatus(
+              '同步成功，已显示腾讯文档最新结果，发现 ' +
+                state.items.length +
+                ' 项' +
+                (syncTime ? '（' + syncTime + '）' : ''),
+              'ok',
+            );
           }
         } catch (error) {
           setStatus(error.message, 'err');
@@ -1382,22 +1472,32 @@ export function renderIndexPage(): string {
         var data = await requestJson('/api/fonts/cache');
         if (data.fromCache) {
           applyFontData(data);
-          var timeText = formatTime(data.fetchedAt || data.cachedAt);
-          var cacheLabel =
-            data.fallbackSource === 'seed' ? '内置缓存' : '缓存';
-          setStatus(
-            '已载入' +
-              cacheLabel +
-              (timeText ? '（' + timeText + '）' : '') +
-              '，发现 ' +
-              state.items.length +
-              ' 项',
-            'ok',
-          );
+          if (data.fallbackSource === 'seed') {
+            setStatus(
+              '已载入内置缓存，不是最新文档，发现 ' +
+                state.items.length +
+                ' 项',
+              'err',
+            );
+          } else {
+            var timeText = sourceTimeText(data);
+            setStatus(
+              '已载入上次缓存' +
+                (timeText ? '（' + timeText + '）' : '') +
+                '，发现 ' +
+                state.items.length +
+                ' 项',
+              'ok',
+            );
+          }
           return true;
         }
 
         state.items = [];
+        state.parsed = {};
+        state.loadingIds = {};
+        state.openIds = {};
+        state.source = emptySourceInfo();
         render();
         setStatus(
           state.ready ? '暂无缓存，可点击同步文档' : '请先在管理后台保存配置',
