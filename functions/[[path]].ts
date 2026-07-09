@@ -7,12 +7,13 @@ import {
   type TencentDocSyncResult,
   syncTencentDocFonts,
 } from '../src/utils/tencentDocs.js';
-import { getStore } from '@edgeone/pages-blob';
 import type { ParseSuccessData } from '../src/utils/types.js';
 import { Hono, type Context } from 'hono';
 
 interface EdgeEnv {
   ADMIN_PASSCODE?: string;
+  ACCESS_PASSCODE?: string;
+  ACCESS_PASSCODES?: string;
   TENCENT_DOC_URL?: string;
   QQ_DOC_URL?: string;
   TENCENT_DOC_CLIENT_ID?: string;
@@ -128,7 +129,8 @@ function defaultSettings(env: EdgeEnv): ManagedSettings {
   };
 }
 
-function getBlobStore() {
+async function getBlobStore() {
+  const { getStore } = await import('@edgeone/pages-blob');
   return getStore(BLOB_STORE_NAME);
 }
 
@@ -287,7 +289,8 @@ function emptyAccess(): AccessState {
 }
 
 async function readJsonFromBlob<T>(key: string): Promise<T | null> {
-  return (await getBlobStore().get(key, {
+  const store = await getBlobStore();
+  return (await store.get(key, {
     type: 'json',
     consistency: 'strong',
   })) as T | null;
@@ -304,7 +307,8 @@ async function readOptionalJsonFromBlob<T>(key: string): Promise<T | null> {
 
 async function writeJsonToBlob(key: string, value: unknown): Promise<void> {
   try {
-    await getBlobStore().setJSON(key, value, {
+    const store = await getBlobStore();
+    await store.setJSON(key, value, {
       cacheControl: 'no-store',
     });
   } catch (error) {
@@ -401,15 +405,31 @@ async function changeAdminPasscode(
   await writeStore(env, store);
 }
 
+function envAccessPasscodes(env: EdgeEnv): string[] {
+  return envValue(env, 'ACCESS_PASSCODES', 'ACCESS_PASSCODE')
+    .split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function listAccessPasscodes(env: EdgeEnv): Promise<
-  { id: string; label: string; createdAt: string }[]
+  { id: string; label: string; createdAt: string; readonly?: boolean }[]
 > {
-  const store = await readStore(env);
-  return (store.access?.passcodes || []).map((item) => ({
-    id: item.id,
-    label: item.label,
-    createdAt: item.createdAt,
+  const envItems = envAccessPasscodes(env).map((_, index) => ({
+    id: `env-${index}`,
+    label: `环境变量访问口令 ${index + 1}`,
+    createdAt: '',
+    readonly: true,
   }));
+  const store = await readStore(env);
+  return [
+    ...envItems,
+    ...(store.access?.passcodes || []).map((item) => ({
+      id: item.id,
+      label: item.label,
+      createdAt: item.createdAt,
+    })),
+  ];
 }
 
 async function addAccessPasscode(
@@ -456,6 +476,7 @@ async function deleteAccessPasscode(env: EdgeEnv, id: string): Promise<void> {
 }
 
 async function hasAccessPasscodes(env: EdgeEnv): Promise<boolean> {
+  if (envAccessPasscodes(env).length) return true;
   const store = await readStore(env);
   return Boolean(store.access?.passcodes.length);
 }
@@ -464,6 +485,8 @@ async function verifyAccessPasscode(
   env: EdgeEnv,
   passcode: string,
 ): Promise<boolean> {
+  if (envAccessPasscodes(env).includes(passcode)) return true;
+
   const store = await readStore(env);
   const passcodes = store.access?.passcodes || [];
 

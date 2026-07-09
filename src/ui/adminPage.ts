@@ -463,11 +463,13 @@ export function renderAdminPage(): string {
               '<div><strong>' +
               escapeHtml(item.label || '未命名口令') +
               '</strong><span>' +
-              escapeHtml(formatTime(item.createdAt)) +
+              escapeHtml(item.readonly ? '环境变量' : formatTime(item.createdAt)) +
               '</span></div>' +
-              '<button class="btn secondary row" data-delete-access-id="' +
-              escapeHtml(item.id) +
-              '" type="button">删除</button>' +
+              (item.readonly
+                ? '<span class="status">只读</span>'
+                : '<button class="btn secondary row" data-delete-access-id="' +
+                  escapeHtml(item.id) +
+                  '" type="button">删除</button>') +
               '</div>'
             );
           })

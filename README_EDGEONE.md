@@ -38,6 +38,7 @@ ADMIN_PASSCODE=你的访问口令
 
 腾讯文档和蓝奏密码可以用环境变量，也可以登录后台后保存到 Blob。
 主界面访问口令不再使用 `ADMIN_PASSCODE`，请在管理后台的“主界面访问口令”区域添加。可以自定义，也可以随机生成，并支持多个口令同时有效。
+如果暂时不使用 Blob 保存主界面访问口令，也可以用 `ACCESS_PASSCODES` 或 `ACCESS_PASSCODE` 作为环境变量兜底。
 
 可选环境变量：
 
@@ -47,6 +48,8 @@ TENCENT_DOC_CLIENT_ID=腾讯 Client ID
 TENCENT_DOC_ACCESS_TOKEN=腾讯 Access Token
 TENCENT_DOC_OPEN_ID=腾讯 Open ID
 LANZOU_PWD=蓝奏云默认密码
+ACCESS_PASSCODES=主界面访问口令1,主界面访问口令2
+ACCESS_PASSCODE=单个主界面访问口令
 ```
 
 兼容旧变量名：
