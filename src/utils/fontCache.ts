@@ -1,19 +1,36 @@
-import type { FontLinkItem, TencentDocSyncResult } from './tencentDocs.js';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import type { FontLinkItem, TencentDocSyncResult } from "./tencentDocs.js";
+import {
+  cacheDataPath,
+  getCacheDb,
+  getCacheMeta,
+  runInCacheTransaction,
+  setCacheMeta,
+  tableCount,
+} from "./cacheDb.js";
+import { existsSync, readFileSync } from "node:fs";
 
 export interface FontCacheEntry extends TencentDocSyncResult {
   cachedAt: string;
 }
 
-const CACHE_PATH = resolve(process.cwd(), 'data', 'fonts.cache.json');
+const LEGACY_CACHE_PATH = cacheDataPath("fonts.cache.json");
+const LEGACY_MIGRATION_KEY = "legacy.fonts.cache.json.migrated";
+
+let legacyMigrationChecked = false;
 
 function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return typeof value === "string" ? value : "";
+}
+
+function rowString(
+  row: Record<string, unknown> | undefined,
+  key: string,
+): string {
+  return stringValue(row?.[key]);
 }
 
 function normalizeItem(value: unknown): FontLinkItem | null {
-  if (typeof value !== 'object' || value === null) return null;
+  if (typeof value !== "object" || value === null) return null;
 
   const record = value as Record<string, unknown>;
   const id = stringValue(record.id);
@@ -31,7 +48,7 @@ function normalizeItem(value: unknown): FontLinkItem | null {
 }
 
 function normalizeCache(value: unknown): FontCacheEntry | null {
-  if (typeof value !== 'object' || value === null) return null;
+  if (typeof value !== "object" || value === null) return null;
 
   const record = value as Record<string, unknown>;
   const items = Array.isArray(record.items)
@@ -54,28 +71,112 @@ function normalizeCache(value: unknown): FontCacheEntry | null {
   };
 }
 
-export function readFontCache(docUrl?: string): FontCacheEntry | null {
-  if (!existsSync(CACHE_PATH)) return null;
+function replaceFontCache(entry: FontCacheEntry): void {
+  const db = getCacheDb();
 
-  try {
-    const cache = normalizeCache(
-      JSON.parse(readFileSync(CACHE_PATH, 'utf-8')) as unknown,
+  runInCacheTransaction(() => {
+    db.prepare("DELETE FROM fonts").run();
+    db.prepare("DELETE FROM font_cache_meta").run();
+    db.prepare(
+      `INSERT INTO font_cache_meta
+        (id, doc_url, encoded_id, file_id, fetched_at, cached_at)
+       VALUES (1, ?, ?, ?, ?, ?)`,
+    ).run(
+      entry.docUrl,
+      entry.encodedId,
+      entry.fileId,
+      entry.fetchedAt,
+      entry.cachedAt,
     );
-    if (!cache) return null;
-    if (docUrl && cache.docUrl !== docUrl) return null;
-    return cache;
-  } catch {
-    return null;
+
+    const insertItem = db.prepare(
+      `INSERT INTO fonts
+        (id, font_name, lanzou_url, source_line, sort_order)
+       VALUES (?, ?, ?, ?, ?)`,
+    );
+    entry.items.forEach((item, index) => {
+      insertItem.run(
+        item.id,
+        item.fontName,
+        item.lanzouUrl,
+        item.sourceLine,
+        index,
+      );
+    });
+  });
+}
+
+function migrateLegacyFontCache(): void {
+  if (legacyMigrationChecked) return;
+  legacyMigrationChecked = true;
+
+  if (getCacheMeta(LEGACY_MIGRATION_KEY) === "1") return;
+
+  if (tableCount("fonts") === 0 && existsSync(LEGACY_CACHE_PATH)) {
+    try {
+      const cache = normalizeCache(
+        JSON.parse(readFileSync(LEGACY_CACHE_PATH, "utf-8")) as unknown,
+      );
+      if (cache) replaceFontCache(cache);
+    } catch {
+      // Ignore corrupt legacy cache; SQLite will be populated on the next sync.
+    }
   }
+
+  setCacheMeta(LEGACY_MIGRATION_KEY, "1");
+}
+
+export function readFontCache(docUrl?: string): FontCacheEntry | null {
+  migrateLegacyFontCache();
+
+  const db = getCacheDb();
+  const meta = db
+    .prepare(
+      `SELECT doc_url, encoded_id, file_id, fetched_at, cached_at
+       FROM font_cache_meta
+       WHERE id = 1`,
+    )
+    .get();
+
+  if (!meta) return null;
+
+  const cacheDocUrl = rowString(meta, "doc_url");
+  if (docUrl && cacheDocUrl !== docUrl) return null;
+
+  const items = db
+    .prepare(
+      `SELECT id, font_name, lanzou_url, source_line
+       FROM fonts
+       ORDER BY sort_order ASC`,
+    )
+    .all()
+    .map((row) =>
+      normalizeItem({
+        id: row.id,
+        fontName: row.font_name,
+        lanzouUrl: row.lanzou_url,
+        sourceLine: row.source_line,
+      }),
+    )
+    .filter((item) => item !== null);
+
+  return {
+    docUrl: cacheDocUrl,
+    encodedId: rowString(meta, "encoded_id"),
+    fileId: rowString(meta, "file_id"),
+    fetchedAt: rowString(meta, "fetched_at"),
+    cachedAt: rowString(meta, "cached_at") || rowString(meta, "fetched_at"),
+    items,
+  };
 }
 
 export function writeFontCache(result: TencentDocSyncResult): FontCacheEntry {
+  migrateLegacyFontCache();
+
   const entry: FontCacheEntry = {
     ...result,
     cachedAt: new Date().toISOString(),
   };
-
-  mkdirSync(dirname(CACHE_PATH), { recursive: true });
-  writeFileSync(CACHE_PATH, `${JSON.stringify(entry, null, 2)}\n`, 'utf-8');
+  replaceFontCache(entry);
   return entry;
 }

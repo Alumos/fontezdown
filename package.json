@@ -11,7 +11,8 @@
     "check": "tsc --noEmit",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format": "prettier --write src/"
+    "format": "prettier --write src/",
+    "test": "tsx --test test/**/*.test.ts"
   },
   "keywords": [],
   "author": "",

@@ -12,21 +12,36 @@ export function renderAdminPage(): string {
 
       :root {
         color-scheme: light;
-        --surface: rgba(255, 252, 244, 0.82);
-        --ink: #1f2523;
-        --muted: #69726e;
-        --line: rgba(75, 82, 77, 0.18);
-        --blue: #3d6f92;
-        --blue-deep: #224e69;
-        --green: #42785f;
-        --green-deep: #245a45;
-        --gold: #b47a2a;
-        --red: #b23a3f;
-        --shadow: 0 18px 54px rgba(33, 36, 32, 0.13);
-        --shadow-soft: 0 10px 26px rgba(33, 36, 32, 0.09);
+        --surface: rgba(255, 255, 255, 0.64);
+        --surface-strong: rgba(255, 255, 255, 0.84);
+        --ink: #172025;
+        --muted: #60717a;
+        --line: rgba(39, 59, 67, 0.18);
+        --line-strong: rgba(39, 59, 67, 0.34);
+        --blue: #3d789d;
+        --blue-deep: #235270;
+        --green: #3b846f;
+        --green-deep: #21634f;
+        --gold: #b98530;
+        --red: #b94b55;
+        --liquid-bg: rgba(255, 255, 255, 0.12);
+        --liquid-bg-strong: rgba(255, 255, 255, 0.18);
+        --liquid-border: rgba(255, 255, 255, 0.36);
+        --liquid-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.52),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.2),
+          inset 6px 6px 16px rgba(255, 255, 255, 0.14),
+          0 18px 44px rgba(22, 34, 42, 0.24);
+        --liquid-shadow-soft:
+          inset 0 1px 0 rgba(255, 255, 255, 0.42),
+          inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+          0 10px 28px rgba(22, 34, 42, 0.16);
         --radius-lg: 26px;
         --radius-md: 18px;
         --radius-sm: 14px;
+        --radius-pill: 999px;
+        --shadow: var(--liquid-shadow);
+        --shadow-soft: var(--liquid-shadow-soft);
       }
 
       * {
@@ -39,21 +54,32 @@ export function renderAdminPage(): string {
         color: var(--ink);
         font-family: ${fontFamilyStack};
         background:
-          linear-gradient(140deg, rgba(247, 243, 236, 0.96), rgba(236, 242, 237, 0.95) 44%, rgba(246, 239, 224, 0.96)),
-          linear-gradient(90deg, rgba(61, 111, 146, 0.12), rgba(66, 120, 95, 0.1), rgba(180, 122, 42, 0.11)),
+          linear-gradient(135deg, rgba(215, 230, 236, 0.92), rgba(239, 244, 240, 0.9) 44%, rgba(230, 224, 239, 0.86)),
+          linear-gradient(115deg, rgba(61, 120, 157, 0.2), transparent 45%),
+          linear-gradient(245deg, rgba(59, 132, 111, 0.18), transparent 52%),
           repeating-linear-gradient(
             115deg,
-            rgba(72, 83, 75, 0.055) 0,
-            rgba(72, 83, 75, 0.055) 1px,
+            rgba(39, 59, 67, 0.055) 0,
+            rgba(39, 59, 67, 0.055) 1px,
             transparent 1px,
             transparent 24px
           );
         background-attachment: fixed;
       }
 
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
       button,
       input {
         font: inherit;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.65;
       }
 
       .shell {
@@ -66,18 +92,16 @@ export function renderAdminPage(): string {
         position: sticky;
         top: 12px;
         z-index: 5;
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        justify-content: space-between;
         gap: 16px;
         margin-bottom: 16px;
-        border: 1px solid var(--line);
+        border: 1px solid var(--liquid-border);
         border-radius: var(--radius-lg);
-        background:
-          linear-gradient(180deg, rgba(255, 252, 244, 0.93), rgba(255, 252, 244, 0.73)),
-          var(--surface);
+        background: var(--liquid-bg);
         box-shadow: var(--shadow);
-        backdrop-filter: blur(24px) saturate(150%);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
         padding: 15px;
       }
 
@@ -107,13 +131,11 @@ export function renderAdminPage(): string {
       }
 
       .panel {
-        border: 1px solid var(--line);
+        border: 1px solid var(--liquid-border);
         border-radius: var(--radius-lg);
-        background:
-          linear-gradient(180deg, rgba(255, 252, 244, 0.9), rgba(255, 252, 244, 0.68)),
-          var(--surface);
+        background: var(--liquid-bg);
         box-shadow: var(--shadow);
-        backdrop-filter: blur(22px) saturate(145%);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(170%);
       }
 
       .auth {
@@ -156,7 +178,7 @@ export function renderAdminPage(): string {
         border: 1px solid var(--line);
         border-radius: var(--radius-md);
         color: var(--ink);
-        background: rgba(255, 252, 244, 0.84);
+        background: rgba(255, 255, 255, 0.58);
         outline: 0;
         padding: 10px 14px;
         transition:
@@ -167,21 +189,25 @@ export function renderAdminPage(): string {
 
       input:focus {
         border-color: rgba(61, 111, 146, 0.58);
-        background: rgba(255, 252, 244, 0.96);
+        background: rgba(255, 255, 255, 0.82);
         box-shadow: 0 0 0 5px rgba(61, 111, 146, 0.12);
       }
 
       .btn {
         position: relative;
         min-height: 44px;
-        border: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        white-space: nowrap;
         border-radius: var(--radius-md);
         padding: 9px 14px;
         background: linear-gradient(180deg, var(--blue), var(--blue-deep));
         box-shadow: 0 12px 24px rgba(61, 111, 146, 0.24);
         color: #fff;
-        cursor: pointer;
         font-weight: 800;
+        text-decoration: none;
         overflow: hidden;
         transition:
           transform 0.18s ease,
@@ -213,7 +239,7 @@ export function renderAdminPage(): string {
 
       .btn.secondary {
         border: 1px solid var(--line);
-        background: rgba(255, 252, 244, 0.76);
+        background: rgba(255, 255, 255, 0.58);
         box-shadow: 0 8px 18px rgba(33, 36, 32, 0.06);
         color: var(--ink);
       }
@@ -264,7 +290,7 @@ export function renderAdminPage(): string {
         min-height: 42px;
         border: 1px solid var(--line);
         border-radius: var(--radius-md);
-        background: rgba(255, 252, 244, 0.64);
+        background: rgba(255, 255, 255, 0.48);
         padding: 8px 10px;
       }
 
@@ -285,6 +311,14 @@ export function renderAdminPage(): string {
         display: none !important;
       }
 
+      .file-input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+      }
+
       @keyframes sheen {
         to {
           transform: translateX(120%);
@@ -302,21 +336,55 @@ export function renderAdminPage(): string {
           align-items: flex-start;
         }
 
+        .actions {
+          display: grid;
+          grid-template-columns: 1fr;
+        }
+
+        .btn,
+        .btn.row {
+          width: 100%;
+        }
+
         .auth,
         .card {
           padding: 18px;
+        }
+
+        .passcode-row {
+          grid-template-columns: 1fr;
+          align-items: stretch;
         }
       }
     </style>
   </head>
   <body>
+    <svg width="0" height="0" aria-hidden="true" focusable="false">
+      <filter id="liquid_glass_filter">
+        <feTurbulence
+          type="fractalNoise"
+          baseFrequency="0.018 0.036"
+          numOctaves="2"
+          seed="8"
+          result="noise"
+        />
+        <feDisplacementMap
+          in="SourceGraphic"
+          in2="noise"
+          scale="12"
+          xChannelSelector="R"
+          yChannelSelector="G"
+        />
+      </filter>
+    </svg>
+
     <div class="shell">
       <header>
         <div>
           <h1>${siteName} 管理后台</h1>
           <div class="status" id="topStatus"></div>
         </div>
-        <a href="/">返回主界面</a>
+        <a class="btn secondary" href="/">返回主界面</a>
       </header>
 
       <section class="panel auth hidden" id="authPanel">
@@ -359,7 +427,19 @@ export function renderAdminPage(): string {
           </div>
           <div class="actions">
             <button class="btn" type="submit">保存配置</button>
+            <button class="btn secondary" id="exportConfigBtn" type="button">
+              导出配置
+            </button>
+            <button class="btn secondary" id="importConfigBtn" type="button">
+              导入配置
+            </button>
           </div>
+          <input
+            class="file-input"
+            id="configImportFile"
+            type="file"
+            accept="application/json,.json"
+          />
         </form>
 
         <aside class="panel card">
@@ -416,6 +496,9 @@ export function renderAdminPage(): string {
         passcode: document.getElementById('passcode'),
         authBtn: document.getElementById('authBtn'),
         settingsForm: document.getElementById('settingsForm'),
+        exportConfigBtn: document.getElementById('exportConfigBtn'),
+        importConfigBtn: document.getElementById('importConfigBtn'),
+        configImportFile: document.getElementById('configImportFile'),
         passcodeForm: document.getElementById('passcodeForm'),
         logoutBtn: document.getElementById('logoutBtn'),
         accessPasscodeForm: document.getElementById('accessPasscodeForm'),
@@ -493,6 +576,36 @@ export function renderAdminPage(): string {
         return requestJson(url, { method: 'DELETE' });
       }
 
+      function applySettings(settings) {
+        els.docUrl.value = settings.docUrl || '';
+        els.clientId.value = settings.clientId || '';
+        els.accessToken.value = settings.accessToken || '';
+        els.openId.value = settings.openId || '';
+        els.lanzouPwd.value = settings.lanzouPwd || '';
+      }
+
+      function downloadJsonFile(fileName, value) {
+        var blob = new Blob([JSON.stringify(value, null, 2) + '\\n'], {
+          type: 'application/json;charset=utf-8',
+        });
+        var url = URL.createObjectURL(blob);
+        var link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function configFileName() {
+        return (
+          'fontezdown-settings-' +
+          new Date().toISOString().replace(/[:.]/g, '-') +
+          '.json'
+        );
+      }
+
       function renderAccessPasscodes() {
         if (!state.accessPasscodes.length) {
           els.accessPasscodeList.innerHTML =
@@ -539,11 +652,7 @@ export function renderAdminPage(): string {
         els.authPanel.classList.add('hidden');
         els.adminPanel.classList.remove('hidden');
         var settings = await requestJson('/api/admin/settings');
-        els.docUrl.value = settings.docUrl || '';
-        els.clientId.value = settings.clientId || '';
-        els.accessToken.value = settings.accessToken || '';
-        els.openId.value = settings.openId || '';
-        els.lanzouPwd.value = settings.lanzouPwd || '';
+        applySettings(settings);
         await loadAccessPasscodes();
       }
 
@@ -596,6 +705,56 @@ export function renderAdminPage(): string {
           setStatus('配置已保存', 'ok');
         } catch (error) {
           setStatus(error.message, 'err');
+        }
+      });
+
+      els.exportConfigBtn.addEventListener('click', async function () {
+        try {
+          els.exportConfigBtn.disabled = true;
+          var config = await requestJson('/api/admin/config/export');
+          downloadJsonFile(configFileName(), config);
+          setStatus('配置已导出', 'ok');
+        } catch (error) {
+          setStatus(error.message, 'err');
+        } finally {
+          els.exportConfigBtn.disabled = false;
+        }
+      });
+
+      els.importConfigBtn.addEventListener('click', function () {
+        els.configImportFile.value = '';
+        els.configImportFile.click();
+      });
+
+      els.configImportFile.addEventListener('change', async function () {
+        var file = els.configImportFile.files && els.configImportFile.files[0];
+        if (!file) return;
+
+        try {
+          var config = JSON.parse(await file.text());
+          var shouldOverwrite = window.confirm(
+            '导入会覆盖当前下载配置，后台口令和访问口令不会改变。是否继续？',
+          );
+          if (!shouldOverwrite) {
+            setStatus('已取消导入');
+            return;
+          }
+
+          els.importConfigBtn.disabled = true;
+          var settings = await postJson('/api/admin/config/import', {
+            config: config,
+            overwrite: true,
+          });
+          applySettings(settings);
+          setStatus('配置已导入并覆盖当前设置', 'ok');
+        } catch (error) {
+          setStatus(
+            error instanceof SyntaxError ? '配置文件不是有效 JSON' : error.message,
+            'err',
+          );
+        } finally {
+          els.importConfigBtn.disabled = false;
+          els.configImportFile.value = '';
         }
       });
 

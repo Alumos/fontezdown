@@ -793,45 +793,126 @@ export function renderIndexPage(): string {
         min-height: 0;
         display: grid;
         align-content: start;
-        gap: 12px;
+        gap: 14px;
         overflow: auto;
-        padding-right: 2px;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        padding: 2px 4px 4px 2px;
       }
 
       .file-row {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 92px;
-        gap: 14px;
-        align-items: center;
-        min-height: 64px;
-        border: 1px solid var(--line);
+        grid-template-columns: minmax(0, 1fr);
+        gap: 8px;
+        align-items: stretch;
+        width: 100%;
+        min-height: 74px;
+        border: 1px solid rgba(39, 59, 67, 0.22);
         border-radius: var(--radius-md);
-        background: rgba(255, 255, 255, 0.48);
+        background: rgba(255, 255, 255, 0.62);
         color: var(--muted);
         font-size: 13px;
-        padding: 12px;
+        text-align: left;
+        padding: 14px;
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease,
+          background 0.18s ease,
+          box-shadow 0.18s ease;
       }
 
-      .file-row .btn {
-        width: 92px;
-        min-height: 40px;
-        border-radius: var(--radius-md);
-        justify-self: end;
+      .file-row:not(.disabled):hover,
+      .file-row.selected {
+        transform: translateY(-1px);
+        border-color: rgba(61, 111, 146, 0.48);
+        background: rgba(232, 244, 248, 0.76);
+        box-shadow: 0 12px 26px rgba(61, 111, 146, 0.16);
+      }
+
+      .file-row.selected {
+        outline: 2px solid rgba(61, 120, 157, 0.22);
+        outline-offset: 2px;
+      }
+
+      .file-row.disabled {
+        cursor: not-allowed;
+        opacity: 0.72;
       }
 
       .file-name {
         color: var(--ink);
         font-weight: 750;
+        line-height: 1.42;
         overflow-wrap: anywhere;
+        word-break: break-word;
       }
 
       .file-meta {
+        min-width: 0;
         display: flex;
         flex-wrap: wrap;
-        gap: 7px;
+        gap: 8px;
         color: var(--muted);
         font-size: 12px;
         font-weight: 700;
+        line-height: 1.35;
+      }
+
+      .download-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 40;
+        display: grid;
+        place-items: center;
+        background: rgba(18, 27, 32, 0.22);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        padding: 18px;
+      }
+
+      .download-modal.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .download-dialog {
+        width: min(420px, 100%);
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: rgba(255, 255, 255, 0.22);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(175%);
+        padding: 16px;
+        transform: translateY(8px) scale(0.98);
+        transition: transform 0.18s ease;
+      }
+
+      .download-modal.open .download-dialog {
+        transform: translateY(0) scale(1);
+      }
+
+      .download-dialog p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .download-file-name {
+        display: block;
+        margin-top: 8px;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+
+      .download-actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-top: 16px;
       }
 
       .empty {
@@ -968,20 +1049,53 @@ export function renderIndexPage(): string {
         }
 
         .file-row {
-          grid-template-columns: 1fr;
+          gap: 9px;
+          min-height: 78px;
+          padding: 14px;
+          border-radius: 16px;
         }
 
-        .file-row .btn {
-          width: 100%;
+        .file-name {
+          font-size: 13px;
+          line-height: 1.42;
+        }
+
+        .file-meta {
+          gap: 8px;
+          font-size: 12px;
+          line-height: 1.35;
         }
 
         .file-popover {
           left: 10px !important;
           right: 10px;
-          top: auto !important;
+          top: 10px !important;
           bottom: 10px;
           width: auto;
-          max-height: min(68vh, 560px);
+          height: calc(100vh - 20px);
+          height: calc(100dvh - 20px);
+          max-height: none;
+          padding: 12px;
+          border-radius: 24px;
+        }
+
+        .files {
+          gap: 12px;
+          padding: 2px 2px 10px 0;
+        }
+
+        .download-modal {
+          align-items: end;
+          padding: 10px;
+        }
+
+        .download-dialog {
+          border-radius: 22px;
+          padding: 14px;
+        }
+
+        .download-file-name {
+          font-size: 14px;
         }
 
         .to-top {
@@ -1149,6 +1263,27 @@ export function renderIndexPage(): string {
       aria-hidden="true"
     ></div>
 
+    <div
+      class="download-modal"
+      id="downloadModal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+    >
+      <div class="download-dialog">
+        <p>确认下载</p>
+        <strong class="download-file-name" id="downloadFileName"></strong>
+        <div class="download-actions">
+          <button class="btn secondary" id="cancelDownloadBtn" type="button">
+            取消
+          </button>
+          <button class="btn green" id="confirmDownloadBtn" type="button">
+            确认下载
+          </button>
+        </div>
+      </div>
+    </div>
+
     <footer class="icp-footer">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
         苏ICP备2021038338号-1
@@ -1163,7 +1298,9 @@ export function renderIndexPage(): string {
         floatingFiles: {
           itemId: '',
           anchor: null,
+          files: [],
         },
+        pendingDownload: null,
         filterParsed: false,
         familyFilters: [],
         weightFilters: [],
@@ -1198,6 +1335,10 @@ export function renderIndexPage(): string {
         sourceDetail: document.getElementById('sourceDetail'),
         fontList: document.getElementById('fontList'),
         filePopover: document.getElementById('filePopover'),
+        downloadModal: document.getElementById('downloadModal'),
+        downloadFileName: document.getElementById('downloadFileName'),
+        cancelDownloadBtn: document.getElementById('cancelDownloadBtn'),
+        confirmDownloadBtn: document.getElementById('confirmDownloadBtn'),
         filterInputs: document.querySelectorAll('[data-filter-group]'),
       };
 
@@ -1249,25 +1390,11 @@ export function renderIndexPage(): string {
         }
       }
 
-      function renderDownloadButton(file) {
-        if (isHttpUrl(file.downloadUrl)) {
-          return (
-            '<a class="btn green small" href="' +
-            escapeHtml(file.downloadUrl) +
-            '" target="_blank" rel="noopener">下载</a>'
-          );
-        }
-
-        return (
-          '<span class="btn small disabled" title="' +
-          escapeHtml(file.error || '未获取到下载地址') +
-          '">解析失败</span>'
-        );
-      }
-
       function closeFilePopover() {
+        closeDownloadModal();
         state.floatingFiles.itemId = '';
         state.floatingFiles.anchor = null;
+        state.floatingFiles.files = [];
         els.filePopover.classList.remove('open');
         els.filePopover.setAttribute('aria-hidden', 'true');
       }
@@ -1283,10 +1410,20 @@ export function renderIndexPage(): string {
 
       function renderFileRows(files) {
         return files
-          .map(function (file) {
+          .map(function (file, index) {
+            var canDownload = isHttpUrl(file.downloadUrl);
             return (
-              '<div class="file-row">' +
-              '<div>' +
+              '<button class="file-row' +
+              (canDownload ? '' : ' disabled') +
+              '" data-file-index="' +
+              index +
+              '" type="button"' +
+              (canDownload
+                ? ''
+                : ' disabled title="' +
+                  escapeHtml(file.error || '未获取到下载地址') +
+                  '"') +
+              '>' +
               '<div class="file-name">' +
               escapeHtml(file.name || '未命名文件') +
               '</div>' +
@@ -1294,13 +1431,43 @@ export function renderIndexPage(): string {
               escapeHtml(file.size || '-') +
               '</span><span>' +
               escapeHtml(file.date || '-') +
+              '</span><span>' +
+              escapeHtml(canDownload ? '点按选择' : '解析失败') +
               '</span></div>' +
-              '</div>' +
-              renderDownloadButton(file) +
-              '</div>'
+              '</button>'
             );
           })
           .join('');
+      }
+
+      function clearSelectedFileRow() {
+        Array.prototype.forEach.call(
+          els.filePopover.querySelectorAll('.file-row.selected'),
+          function (row) {
+            row.classList.remove('selected');
+          },
+        );
+      }
+
+      function openDownloadModal(file, index) {
+        if (!file || !isHttpUrl(file.downloadUrl)) return;
+
+        clearSelectedFileRow();
+        var row = els.filePopover.querySelector('[data-file-index="' + index + '"]');
+        if (row) row.classList.add('selected');
+
+        state.pendingDownload = file;
+        els.downloadFileName.textContent = file.name || '未命名文件';
+        els.downloadModal.classList.add('open');
+        els.downloadModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeDownloadModal() {
+        state.pendingDownload = null;
+        clearSelectedFileRow();
+        els.downloadModal.classList.remove('open');
+        els.downloadModal.setAttribute('aria-hidden', 'true');
+        els.downloadFileName.textContent = '';
       }
 
       function positionFilePopover(anchor) {
@@ -1336,6 +1503,7 @@ export function renderIndexPage(): string {
 
         state.floatingFiles.itemId = id;
         state.floatingFiles.anchor = anchor;
+        state.floatingFiles.files = parsed.files || [];
         els.filePopover.innerHTML =
           '<div class="file-popover-head">' +
           '<div class="file-popover-title"><strong>' +
@@ -1932,10 +2100,30 @@ export function renderIndexPage(): string {
         if (event.target.closest('[data-close-files]')) {
           closeFilePopover();
           render();
+          return;
         }
+
+        var fileRow = event.target.closest('[data-file-index]');
+        if (fileRow) {
+          var index = Number(fileRow.getAttribute('data-file-index'));
+          var file = state.floatingFiles.files[index];
+          openDownloadModal(file, index);
+        }
+      });
+      els.cancelDownloadBtn.addEventListener('click', closeDownloadModal);
+      els.confirmDownloadBtn.addEventListener('click', function () {
+        var file = state.pendingDownload;
+        if (file && isHttpUrl(file.downloadUrl)) {
+          window.open(file.downloadUrl, '_blank', 'noopener');
+        }
+        closeDownloadModal();
+      });
+      els.downloadModal.addEventListener('click', function (event) {
+        if (event.target === els.downloadModal) closeDownloadModal();
       });
       document.addEventListener('click', function (event) {
         if (!state.floatingFiles.itemId) return;
+        if (els.downloadModal.contains(event.target)) return;
         if (els.filePopover.contains(event.target)) return;
         if (event.target.closest('[data-toggle-id]')) return;
         closeFilePopover();
@@ -1943,8 +2131,12 @@ export function renderIndexPage(): string {
       });
       document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
-          closeFilePopover();
-          render();
+          if (els.downloadModal.classList.contains('open')) {
+            closeDownloadModal();
+          } else {
+            closeFilePopover();
+            render();
+          }
         }
       });
 

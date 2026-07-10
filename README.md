@@ -6,7 +6,7 @@
 
 1. 在腾讯文档里维护字体名称和蓝奏云分享链接。
 2. 后台读取腾讯文档 OpenAPI，从文本和超链接字段提取字体条目。
-3. 同步结果写入本地 `data/fonts.cache.json`。
+3. 同步结果写入本地 `data/fontezdown.sqlite`。
 4. 用户进入首页筛选字体，点击解析后由服务端把蓝奏云分享链接转换为下载地址。
 
 ## 功能
@@ -15,12 +15,12 @@
 - 后台管理：配置腾讯文档凭据、蓝奏云默认密码、后台口令和首页访问口令。
 - 腾讯文档同步：从文档内容自动提取字体名称和蓝奏云链接。
 - 蓝奏云解析：支持普通链接、带密码链接，以及文件夹/文件结果。
-- 本地缓存：同步结果和解析结果保存在 `data/`，腾讯文档暂时失败时仍可读取上次缓存。
+- 本地缓存：同步结果和解析结果保存在 `data/fontezdown.sqlite`，腾讯文档暂时失败时仍可读取上次缓存。
 - Node/VPS 部署：项目只保留稳定的 Node 服务入口。
 
 ## 环境要求
 
-- Node.js 20+ 推荐，最低请使用 Node.js 18+
+- Node.js 22.5+（使用内置 `node:sqlite`），推荐 Node.js 24+
 - pnpm 10.33.0+
 
 ## 本地运行
@@ -50,7 +50,7 @@ TENCENT_DOC_ACCESS_TOKEN=your_access_token
 TENCENT_DOC_OPEN_ID=your_open_id
 ```
 
-`data/` 目录包含口令哈希、腾讯文档凭据、字体缓存和已解析下载结果，已经被 `.gitignore` 忽略，不要提交到公开仓库。
+`data/` 目录包含口令哈希、腾讯文档凭据、SQLite 缓存和已解析下载结果，已经被 `.gitignore` 忽略，不要提交到公开仓库。旧版 `fonts.cache.json` / `parsed.cache.json` 首次启动会自动迁移到 `data/fontezdown.sqlite`，迁移后会保留为备份但不再写入。
 
 ## 构建
 
@@ -120,6 +120,7 @@ src/
 ├── routes/                 # HTTP 路由
 ├── ui/                     # 首页和后台页面渲染
 └── utils/
+    ├── cacheDb.ts          # SQLite 缓存库初始化
     ├── fontCache.ts        # 字体缓存读写
     ├── parsedCache.ts      # 解析结果缓存
     ├── settingsStore.ts    # 后台配置和会话管理
@@ -131,8 +132,8 @@ src/
 
 - 不要提交 `.env`、`.env.local` 和 `data/`。
 - `data/settings.local` 可能包含后台口令哈希、腾讯文档凭据和蓝奏云默认密码。
-- `data/fonts.cache.json` 可能包含字体名称和蓝奏云分享链接。
-- `data/parsed.cache.json` 可能包含已解析的文件列表和下载地址。
+- `data/fontezdown.sqlite` 可能包含字体名称、蓝奏云分享链接、已解析的文件列表和下载地址。
+- 旧版 `data/fonts.cache.json` / `data/parsed.cache.json` 如仍存在，也可能包含同类缓存数据。
 - 公网部署时请设置强口令，并限制腾讯文档凭据权限。
 
 本项目仅用于个人字体资源整理和下载入口搭建。请确保你拥有字体文件的使用和分发权限，并遵守腾讯文档、蓝奏云及相关字体授权协议。

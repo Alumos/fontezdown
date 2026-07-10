@@ -29,7 +29,14 @@ export interface TencentDocSyncResult {
 type JsonObject = Record<string, unknown>;
 
 const LANZOU_URL_RE =
-  /\b(?:https?:\/\/)?(?:[\w-]+\.)?(?:lanzou[a-z0-9]*|lanzn)\.com\/[^\s"'<>，。；、\])）]+/gi;
+  new RegExp(
+    String.raw`\b(?:https?:\/\/)?(?:[\w-]+\.)?(?:lanzou[a-z0-9]*|lanzn)\.com\/[^\u0000-\u001f\s"'<>，。；、\])）]+`,
+    'gi',
+  );
+const TRAILING_URL_PUNCTUATION_RE = new RegExp(
+  String.raw`[\u0000-\u001f)\]）】。；;，,]+$`,
+  'g',
+);
 const TENCENT_SYNC_RETRY_ATTEMPTS = 3;
 const TENCENT_SYNC_RETRY_BASE_MS = 700;
 const TRANSIENT_TENCENT_ERROR_RE =
@@ -37,19 +44,17 @@ const TRANSIENT_TENCENT_ERROR_RE =
 const BASE64URL_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 
-const TEXT_KEYS = new Set([
+const PARAGRAPH_TEXT_KEYS = new Set([
   'caption',
   'content',
   'insert',
-  'name',
   'plaintext',
   'text',
-  'title',
   'value',
 ]);
 
-function isTextKey(key: string): boolean {
-  return TEXT_KEYS.has(key.replace(/[-_]/g, '').toLowerCase());
+function isParagraphTextKey(key: string): boolean {
+  return PARAGRAPH_TEXT_KEYS.has(key.replace(/[-_]/g, '').toLowerCase());
 }
 
 function matchLanzouUrls(text: string): string[] {
@@ -304,7 +309,16 @@ async function getDocument(
   return payload;
 }
 
-function textAndUrlsFromNode(value: unknown): {
+function isParagraphNode(value: unknown): value is JsonObject {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const type = (value as JsonObject).type;
+  return typeof type === 'string' && type.toLowerCase() === 'paragraph';
+}
+
+function textAndUrlsFromParagraph(value: unknown): {
   textParts: string[];
   urls: string[];
 } {
@@ -318,7 +332,7 @@ function textAndUrlsFromNode(value: unknown): {
       const urls = matchLanzouUrls(current);
       result.urls.push(...urls);
 
-      if (isTextKey(key)) {
+      if (isParagraphTextKey(key)) {
         result.textParts.push(current);
       }
       return;
@@ -340,13 +354,13 @@ function textAndUrlsFromNode(value: unknown): {
   return result;
 }
 
-function uniqueLines(lines: string[]): string[] {
+function uniqueNormalizedUrls(urls: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
 
-  for (const line of lines) {
-    const normalized = line.replace(/\s+/g, ' ').trim();
-    if (!normalized || seen.has(normalized)) continue;
+  for (const url of urls) {
+    const normalized = normalizeLanzouUrl(url);
+    if (seen.has(normalized)) continue;
 
     seen.add(normalized);
     result.push(normalized);
@@ -355,84 +369,37 @@ function uniqueLines(lines: string[]): string[] {
   return result;
 }
 
-function collectLooseLines(payload: unknown): string[] {
-  const lines: string[] = [];
+function paragraphLines(paragraph: JsonObject): string[] {
+  const { textParts, urls } = textAndUrlsFromParagraph(paragraph);
+  let text = textParts.join('');
+  const linkUrls = uniqueNormalizedUrls(urls);
 
-  function pushLine(value: string): void {
-    for (const line of value.split(/\r?\n/)) {
-      const normalized = line.replace(/\s+/g, ' ').trim();
-      if (normalized) lines.push(normalized);
-    }
+  if (linkUrls.length > 0 && matchLanzouUrls(text).length === 0) {
+    text = [text, ...linkUrls].filter(Boolean).join(' ');
   }
 
-  function walk(current: unknown, key = ''): void {
-    if (typeof current === 'string') {
-      if (matchLanzouUrls(current).length > 0 || isTextKey(key)) {
-        pushLine(current);
-      }
-      return;
-    }
-
-    if (Array.isArray(current)) {
-      for (const item of current) walk(item);
-      return;
-    }
-
-    if (typeof current === 'object' && current !== null) {
-      const record = current as JsonObject;
-      const localTexts: string[] = [];
-      const localUrls: string[] = [];
-
-      for (const [childKey, childValue] of Object.entries(record)) {
-        if (typeof childValue !== 'string') continue;
-
-        const urls = matchLanzouUrls(childValue);
-        if (urls.length > 0) localUrls.push(...urls);
-        if (isTextKey(childKey)) localTexts.push(childValue);
-      }
-
-      if (localUrls.length > 0) {
-        pushLine([...localTexts, ...localUrls].join(' '));
-      }
-
-      for (const [childKey, childValue] of Object.entries(record)) {
-        walk(childValue, childKey);
-      }
-    }
-  }
-
-  walk(payload);
-  return uniqueLines(lines);
+  return text
+    .split(/\r\n?|\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
 }
 
 function collectParagraphLines(payload: unknown): string[] {
   const lines: string[] = [];
 
   function walk(current: unknown): void {
-    if (typeof current !== 'object' || current === null) return;
-
     if (Array.isArray(current)) {
       for (const item of current) walk(item);
-      return;
+    } else if (isParagraphNode(current)) {
+      lines.push(...paragraphLines(current));
+    } else if (typeof current === 'object' && current !== null) {
+      for (const value of Object.values(current)) walk(value);
     }
-
-    const record = current as JsonObject;
-    const type = record.type;
-    if (type === 'Paragraph' || type === 'TableCell') {
-      const { textParts, urls } = textAndUrlsFromNode(record);
-      const text = [...textParts, ...urls]
-        .join(' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-      if (text) lines.push(text);
-    }
-
-    for (const value of Object.values(record)) walk(value);
   }
 
   walk(payload);
 
-  return uniqueLines([...lines, ...collectLooseLines(payload)]);
+  return lines;
 }
 
 function cleanFontName(text: string): string {
@@ -456,7 +423,7 @@ function cleanFontName(text: string): string {
 }
 
 function normalizeLanzouUrl(url: string): string {
-  const cleanUrl = url.replace(/[)\]）】。；;，,]+$/g, '');
+  const cleanUrl = url.replace(TRAILING_URL_PUNCTUATION_RE, '');
   return /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`;
 }
 
@@ -487,21 +454,28 @@ function base64UrlEncodeUtf8(value: string): string {
 export function extractFontLinks(lines: string[]): FontLinkItem[] {
   const items: FontLinkItem[] = [];
   const seen = new Set<string>();
-  let previousTextLine = '';
+  let pendingFontName = '';
 
   for (const line of lines) {
     const urls = matchLanzouUrls(line);
     if (!urls || urls.length === 0) {
       const cleanLine = cleanFontName(line);
-      if (cleanLine) previousTextLine = cleanLine;
+      if (cleanLine) pendingFontName = cleanLine;
+      continue;
+    }
+
+    const inlineFontName = cleanFontName(line);
+    const canUsePendingFontName = isHyperlinkFieldText(line);
+    if (!inlineFontName && !canUsePendingFontName) {
+      pendingFontName = '';
       continue;
     }
 
     for (const rawUrl of urls) {
       const lanzouUrl = normalizeLanzouUrl(rawUrl);
       const fontName =
-        cleanFontName(line) ||
-        previousTextLine ||
+        inlineFontName ||
+        (canUsePendingFontName ? pendingFontName : '') ||
         `未命名字体 ${items.length + 1}`;
       const key = `${fontName}|${lanzouUrl}`;
       if (seen.has(key)) continue;
@@ -514,9 +488,20 @@ export function extractFontLinks(lines: string[]): FontLinkItem[] {
         sourceLine: line,
       });
     }
+
+    pendingFontName = '';
   }
 
   return items;
+}
+
+export function extractFontLinksFromDocument(payload: unknown): FontLinkItem[] {
+  const lines = collectParagraphLines(payload);
+  if (lines.length === 0) {
+    throw new Error('腾讯文档接口未返回可识别的正文段落');
+  }
+
+  return extractFontLinks(lines);
 }
 
 export async function syncTencentDocFonts({
@@ -530,10 +515,9 @@ export async function syncTencentDocFonts({
   const document = await withTencentRetry(() =>
     getDocument(fileId, credentials),
   );
-  const lines = collectParagraphLines(
+  const items = extractFontLinksFromDocument(
     objectValue(document, 'data') ?? document,
   );
-  const items = extractFontLinks(lines);
 
   return {
     docUrl,
