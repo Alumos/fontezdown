@@ -59,10 +59,15 @@ export const tencentDocs = {
   openId: envValue('TENCENT_DOC_OPEN_ID', 'QQ_DOC_OPEN_ID'),
 };
 
+export const wechatRss = {
+  rssUrl: envValue('WECHAT_RSS_URL', 'WECHAT_ARTICLE_RSS_URL'),
+};
+
 const config = {
   PORT,
   rateLimit,
   tencentDocs,
+  wechatRss,
 };
 
 export default config;

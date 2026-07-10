@@ -424,9 +424,16 @@ export function renderAdminPage(): string {
               <label for="lanzouPwd">蓝奏云密码</label>
               <input id="lanzouPwd" autocomplete="off" type="password" />
             </div>
+            <div class="field">
+              <label for="wechatRssUrl">公众号 RSS 地址</label>
+              <input id="wechatRssUrl" autocomplete="off" />
+            </div>
           </div>
           <div class="actions">
             <button class="btn" type="submit">保存配置</button>
+            <button class="btn secondary" id="syncArticlesBtn" type="button">
+              同步文章
+            </button>
             <button class="btn secondary" id="exportConfigBtn" type="button">
               导出配置
             </button>
@@ -499,6 +506,7 @@ export function renderAdminPage(): string {
         exportConfigBtn: document.getElementById('exportConfigBtn'),
         importConfigBtn: document.getElementById('importConfigBtn'),
         configImportFile: document.getElementById('configImportFile'),
+        syncArticlesBtn: document.getElementById('syncArticlesBtn'),
         passcodeForm: document.getElementById('passcodeForm'),
         logoutBtn: document.getElementById('logoutBtn'),
         accessPasscodeForm: document.getElementById('accessPasscodeForm'),
@@ -511,6 +519,7 @@ export function renderAdminPage(): string {
         accessToken: document.getElementById('accessToken'),
         openId: document.getElementById('openId'),
         lanzouPwd: document.getElementById('lanzouPwd'),
+        wechatRssUrl: document.getElementById('wechatRssUrl'),
         currentPasscode: document.getElementById('currentPasscode'),
         nextPasscode: document.getElementById('nextPasscode'),
       };
@@ -582,6 +591,18 @@ export function renderAdminPage(): string {
         els.accessToken.value = settings.accessToken || '';
         els.openId.value = settings.openId || '';
         els.lanzouPwd.value = settings.lanzouPwd || '';
+        els.wechatRssUrl.value = settings.wechatRssUrl || '';
+      }
+
+      function currentSettingsBody() {
+        return {
+          docUrl: els.docUrl.value.trim(),
+          clientId: els.clientId.value.trim(),
+          accessToken: els.accessToken.value.trim(),
+          openId: els.openId.value.trim(),
+          lanzouPwd: els.lanzouPwd.value.trim(),
+          wechatRssUrl: els.wechatRssUrl.value.trim(),
+        };
       }
 
       function downloadJsonFile(fileName, value) {
@@ -695,16 +716,32 @@ export function renderAdminPage(): string {
       els.settingsForm.addEventListener('submit', async function (event) {
         event.preventDefault();
         try {
-          await postJson('/api/admin/settings', {
-            docUrl: els.docUrl.value.trim(),
-            clientId: els.clientId.value.trim(),
-            accessToken: els.accessToken.value.trim(),
-            openId: els.openId.value.trim(),
-            lanzouPwd: els.lanzouPwd.value.trim(),
-          });
+          await postJson('/api/admin/settings', currentSettingsBody());
           setStatus('配置已保存', 'ok');
         } catch (error) {
           setStatus(error.message, 'err');
+        }
+      });
+
+      els.syncArticlesBtn.addEventListener('click', async function () {
+        try {
+          els.syncArticlesBtn.disabled = true;
+          setStatus('正在同步公众号文章');
+          await postJson('/api/admin/settings', currentSettingsBody());
+          var data = await postJson('/api/admin/articles/sync', {});
+          var cache = data.cache || {};
+          setStatus(
+            '文章已同步：' +
+              (cache.articleCount || 0) +
+              ' 篇，' +
+              (cache.imageCount || 0) +
+              ' 张效果图',
+            'ok',
+          );
+        } catch (error) {
+          setStatus(error.message, 'err');
+        } finally {
+          els.syncArticlesBtn.disabled = false;
         }
       });
 

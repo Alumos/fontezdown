@@ -14,6 +14,7 @@ export interface ManagedSettings {
   accessToken: string;
   openId: string;
   lanzouPwd: string;
+  wechatRssUrl: string;
 }
 
 interface AdminState {
@@ -60,6 +61,7 @@ function defaultSettings(): ManagedSettings {
     accessToken: config.tencentDocs.accessToken,
     openId: config.tencentDocs.openId,
     lanzouPwd: "",
+    wechatRssUrl: config.wechatRss.rssUrl,
   };
 }
 
@@ -294,6 +296,7 @@ export function publicConfigStatus(): {
   hasDocUrl: boolean;
   hasTencentCredentials: boolean;
   hasLanzouPassword: boolean;
+  hasWechatRss: boolean;
   hasAccessPasscodes: boolean;
 } {
   const store = readStore();
@@ -306,6 +309,7 @@ export function publicConfigStatus(): {
       store.settings.openId,
     ),
     hasLanzouPassword: Boolean(store.settings.lanzouPwd),
+    hasWechatRss: Boolean(store.settings.wechatRssUrl),
     hasAccessPasscodes: Boolean(store.access?.passcodes.length),
   };
 }

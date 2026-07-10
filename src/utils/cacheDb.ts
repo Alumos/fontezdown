@@ -61,6 +61,29 @@ function initializeDatabase(database: DatabaseSync): void {
       FOREIGN KEY (cache_key) REFERENCES parse_records(cache_key) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS article_cache_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      rss_url TEXT NOT NULL,
+      fetched_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS articles (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      topic TEXT NOT NULL,
+      link TEXT NOT NULL,
+      published_at TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS article_images (
+      article_id TEXT NOT NULL,
+      image_index INTEGER NOT NULL,
+      image_url TEXT NOT NULL,
+      PRIMARY KEY (article_id, image_index),
+      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_fonts_sort_order
       ON fonts(sort_order);
 
@@ -69,6 +92,12 @@ function initializeDatabase(database: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_parse_files_cache_key
       ON parse_files(cache_key, file_index);
+
+    CREATE INDEX IF NOT EXISTS idx_articles_sort_order
+      ON articles(sort_order);
+
+    CREATE INDEX IF NOT EXISTS idx_article_images_article_id
+      ON article_images(article_id, image_index);
   `);
 }
 

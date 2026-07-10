@@ -1,4 +1,10 @@
 import config from "../config/config.js";
+import {
+  articleCacheSummary,
+  readArticleCache,
+  readArticleMatchesForItems,
+  syncWechatRssArticles,
+} from "../utils/articleCache.js";
 import { readFontCache, writeFontCache } from "../utils/fontCache.js";
 import { parseLanzouUrl } from "../utils/lanzou/lanzouParser.js";
 import {
@@ -27,6 +33,7 @@ import {
   verifyAdminPasscode,
 } from "../utils/settingsStore.js";
 import {
+  type FontLinkItem,
   type TencentCredentials,
   syncTencentDocFonts,
 } from "../utils/tencentDocs.js";
@@ -59,6 +66,7 @@ interface AdminSettingsRequest {
   accessToken?: unknown;
   openId?: unknown;
   lanzouPwd?: unknown;
+  wechatRssUrl?: unknown;
 }
 
 interface AdminConfigImportRequest {
@@ -73,6 +81,7 @@ const ADMIN_CONFIG_KEYS = [
   "accessToken",
   "openId",
   "lanzouPwd",
+  "wechatRssUrl",
 ] as const;
 
 function stringValue(value: unknown): string {
@@ -122,6 +131,45 @@ function settingsFromBody(body: AdminSettingsRequest): ManagedSettings {
     accessToken: stringValue(body.accessToken),
     openId: stringValue(body.openId),
     lanzouPwd: stringValue(body.lanzouPwd),
+    wechatRssUrl: stringValue(body.wechatRssUrl),
+  };
+}
+
+interface FontItemsPayload {
+  items: FontLinkItem[];
+}
+
+function publicArticleCacheSummary(
+  cache: ReturnType<typeof readArticleCache>,
+): {
+  fetchedAt: string;
+  articleCount: number;
+  imageCount: number;
+} | null {
+  const summary = articleCacheSummary(cache);
+  if (!summary) return null;
+  return {
+    fetchedAt: summary.fetchedAt,
+    articleCount: summary.articleCount,
+    imageCount: summary.imageCount,
+  };
+}
+
+function fontPayload<T extends FontItemsPayload>(cache: T): T & {
+  parsedCache: ReturnType<typeof readParsedCacheForItems>;
+  articleMatches: ReturnType<typeof readArticleMatchesForItems>;
+  articleCache: ReturnType<typeof publicArticleCacheSummary>;
+} {
+  const settings = getManagedSettings();
+  const articleCache = readArticleCache(settings.wechatRssUrl);
+
+  return {
+    ...cache,
+    parsedCache: readParsedCacheForItems(cache.items),
+    articleMatches: articleCache
+      ? readArticleMatchesForItems(cache.items)
+      : {},
+    articleCache: publicArticleCacheSummary(articleCache),
   };
 }
 
@@ -269,6 +317,40 @@ router.post("/admin/settings", async (c) => {
   });
 });
 
+router.get("/admin/articles/cache", (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  const settings = getManagedSettings();
+  return c.json({
+    code: 0,
+    data: {
+      cache: articleCacheSummary(readArticleCache(settings.wechatRssUrl)),
+    },
+  });
+});
+
+router.post("/admin/articles/sync", async (c) => {
+  const denied = requireAdmin(c);
+  if (denied) return denied;
+
+  const settings = getManagedSettings();
+
+  try {
+    const cache = await syncWechatRssArticles(settings.wechatRssUrl);
+    return c.json({
+      code: 0,
+      msg: "公众号文章同步成功",
+      data: {
+        cache: articleCacheSummary(cache),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ code: 1, msg: message }, 400);
+  }
+});
+
 router.get("/admin/config/export", (c) => {
   const denied = requireAdmin(c);
   if (denied) return denied;
@@ -394,9 +476,8 @@ router.post("/fonts/sync", async (c) => {
       code: 0,
       msg: "同步成功",
       data: {
-        ...cache,
+        ...fontPayload(cache),
         fromCache: false,
-        parsedCache: readParsedCacheForItems(cache.items),
       },
     });
   } catch (error) {
@@ -407,10 +488,9 @@ router.post("/fonts/sync", async (c) => {
         code: 0,
         msg: `同步失败，已使用上次缓存：${message}`,
         data: {
-          ...cache,
+          ...fontPayload(cache),
           fromCache: true,
           syncError: message,
-          parsedCache: readParsedCacheForItems(cache.items),
         },
       });
     }
@@ -438,14 +518,17 @@ router.get("/fonts/cache", (c) => {
     msg: cache ? "读取缓存成功" : "暂无缓存",
     data: cache
       ? {
-          ...cache,
+          ...fontPayload(cache),
           fromCache: true,
-          parsedCache: readParsedCacheForItems(cache.items),
         }
       : {
           docUrl,
           items: [],
           fromCache: false,
+          articleMatches: {},
+          articleCache: publicArticleCacheSummary(
+            readArticleCache(getManagedSettings().wechatRssUrl),
+          ),
         },
   });
 });

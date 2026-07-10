@@ -547,14 +547,13 @@ export function renderIndexPage(): string {
       .list {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
-        grid-auto-rows: 206px;
         gap: 12px;
         align-items: stretch;
       }
 
       .item {
         position: relative;
-        height: 206px;
+        min-height: 226px;
         border: 1px solid var(--liquid-border);
         border-radius: var(--radius-lg);
         background: var(--liquid-bg);
@@ -639,6 +638,38 @@ export function renderIndexPage(): string {
         font-size: 12px;
         font-weight: 800;
         padding: 3px 8px;
+      }
+
+      .article-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .article-link {
+        min-height: 30px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(61, 111, 146, 0.2);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.5);
+        color: var(--blue-deep);
+        font-size: 12px;
+        font-weight: 850;
+        text-decoration: none;
+        padding: 5px 9px;
+        transition:
+          transform 0.18s ease,
+          border-color 0.18s ease,
+          background 0.18s ease;
+      }
+
+      .article-link:hover {
+        transform: translateY(-1px);
+        border-color: rgba(61, 111, 146, 0.38);
+        background: rgba(232, 244, 248, 0.72);
       }
 
       .progress-wrap {
@@ -915,6 +946,192 @@ export function renderIndexPage(): string {
         margin-top: 16px;
       }
 
+      .preview-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 45;
+        display: grid;
+        place-items: center;
+        background: rgba(18, 27, 32, 0.28);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.18s ease;
+        padding: 18px;
+      }
+
+      .preview-modal.open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .preview-dialog {
+        width: min(980px, 100%);
+        max-height: min(820px, calc(100vh - 36px));
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 12px;
+        border: 1px solid var(--liquid-border);
+        border-radius: var(--radius-lg);
+        background: rgba(255, 255, 255, 0.2);
+        box-shadow: var(--liquid-shadow);
+        backdrop-filter: blur(4px) url(#liquid_glass_filter) saturate(175%);
+        padding: 14px;
+        overflow: hidden;
+        transform: translateY(8px) scale(0.98);
+        transition: transform 0.18s ease;
+      }
+
+      .preview-modal.open .preview-dialog {
+        transform: translateY(0) scale(1);
+      }
+
+      .preview-head {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 12px;
+        align-items: start;
+      }
+
+      .preview-title {
+        min-width: 0;
+      }
+
+      .preview-title strong {
+        display: block;
+        color: var(--ink);
+        font-size: 16px;
+        line-height: 1.35;
+        overflow-wrap: anywhere;
+      }
+
+      .preview-title span {
+        display: block;
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 750;
+      }
+
+      .preview-close {
+        width: 36px;
+        height: 36px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.5);
+        color: var(--ink);
+        font-size: 18px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .preview-gallery {
+        min-height: 0;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .preview-stage {
+        width: 100%;
+        min-height: 340px;
+        max-height: min(56vh, 520px);
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(39, 59, 67, 0.16);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.52);
+        padding: 10px;
+        overflow: hidden;
+        cursor: zoom-in;
+        touch-action: none;
+        user-select: none;
+      }
+
+      .preview-stage img {
+        max-width: 100%;
+        max-height: min(52vh, 500px);
+        width: auto;
+        height: auto;
+        display: block;
+        border-radius: 12px;
+        box-shadow: 0 10px 24px rgba(33, 36, 32, 0.09);
+        pointer-events: none;
+        transform: translate3d(0, 0, 0) scale(1);
+        transform-origin: center center;
+        transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+        user-select: none;
+        -webkit-user-drag: none;
+        will-change: transform;
+      }
+
+      .preview-stage.zoom-active {
+        cursor: grab;
+      }
+
+      .preview-stage.dragging {
+        cursor: grabbing;
+      }
+
+      .preview-stage.interacting img {
+        transition: none;
+      }
+
+      .preview-nav {
+        width: 44px;
+        height: 70px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.54);
+        color: var(--blue-deep);
+        font-size: 30px;
+        font-weight: 850;
+        line-height: 1;
+      }
+
+      .preview-nav:disabled {
+        opacity: 0.35;
+      }
+
+      .preview-thumbs {
+        display: flex;
+        gap: 8px;
+        min-width: 0;
+        overflow-x: auto;
+        overscroll-behavior-x: contain;
+        padding: 2px 2px 8px;
+      }
+
+      .preview-thumb {
+        flex: 0 0 72px;
+        width: 72px;
+        height: 92px;
+        border: 1px solid rgba(39, 59, 67, 0.18);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.52);
+        padding: 2px;
+        overflow: hidden;
+      }
+
+      .preview-thumb.active {
+        border-color: rgba(61, 120, 157, 0.66);
+        outline: 2px solid rgba(61, 120, 157, 0.18);
+        outline-offset: 2px;
+      }
+
+      .preview-thumb img {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border-radius: 9px;
+        object-fit: cover;
+      }
+
+      .preview-actions {
+        display: flex;
+        justify-content: end;
+      }
+
       .empty {
         min-height: 280px;
         display: grid;
@@ -1035,7 +1252,7 @@ export function renderIndexPage(): string {
         }
 
         .list {
-          grid-auto-rows: 206px;
+          align-items: stretch;
         }
 
         .actions,
@@ -1092,6 +1309,44 @@ export function renderIndexPage(): string {
         .download-dialog {
           border-radius: 22px;
           padding: 14px;
+        }
+
+        .preview-modal {
+          align-items: stretch;
+          padding: 10px;
+        }
+
+        .preview-dialog {
+          max-height: calc(100vh - 20px);
+          max-height: calc(100dvh - 20px);
+          border-radius: 22px;
+        }
+
+        .preview-gallery {
+          grid-template-columns: 38px minmax(0, 1fr) 38px;
+          gap: 7px;
+        }
+
+        .preview-stage {
+          min-height: 320px;
+          max-height: 58vh;
+          padding: 6px;
+        }
+
+        .preview-stage img {
+          max-height: 56vh;
+        }
+
+        .preview-nav {
+          width: 38px;
+          height: 62px;
+          font-size: 26px;
+        }
+
+        .preview-thumb {
+          flex-basis: 62px;
+          width: 62px;
+          height: 78px;
         }
 
         .download-file-name {
@@ -1284,6 +1539,74 @@ export function renderIndexPage(): string {
       </div>
     </div>
 
+    <div
+      class="preview-modal"
+      id="previewModal"
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+    >
+      <div class="preview-dialog">
+        <div class="preview-head">
+          <div class="preview-title">
+            <strong id="previewTitle"></strong>
+            <span id="previewMeta"></span>
+          </div>
+          <button
+            class="preview-close"
+            id="closePreviewBtn"
+            type="button"
+            aria-label="关闭预览图"
+          >
+            ×
+          </button>
+        </div>
+        <div class="preview-gallery">
+          <button
+            class="preview-nav"
+            id="previewPrevBtn"
+            type="button"
+            aria-label="上一张"
+          >
+            &lsaquo;
+          </button>
+          <button
+            class="preview-stage"
+            id="previewStage"
+            type="button"
+            aria-label="放大当前预览图"
+          >
+            <img
+              id="previewMainImage"
+              alt=""
+              decoding="async"
+              referrerpolicy="no-referrer"
+            />
+          </button>
+          <button
+            class="preview-nav"
+            id="previewNextBtn"
+            type="button"
+            aria-label="下一张"
+          >
+            &rsaquo;
+          </button>
+        </div>
+        <div class="preview-thumbs" id="previewThumbs"></div>
+        <div class="preview-actions">
+          <a
+            class="btn secondary small"
+            id="previewArticleLink"
+            href="#"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            打开原文
+          </a>
+        </div>
+      </div>
+    </div>
+
     <footer class="icp-footer">
       <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
         苏ICP备2021038338号-1
@@ -1294,6 +1617,7 @@ export function renderIndexPage(): string {
       var state = {
         items: [],
         parsed: {},
+        articleMatches: {},
         loadingIds: {},
         floatingFiles: {
           itemId: '',
@@ -1301,6 +1625,26 @@ export function renderIndexPage(): string {
           files: [],
         },
         pendingDownload: null,
+        activePreviewId: '',
+        previewImages: [],
+        previewIndex: 0,
+        previewTransform: {
+          scale: 1,
+          x: 0,
+          y: 0,
+        },
+        previewPointers: {},
+        previewGesture: {
+          mode: '',
+          startX: 0,
+          startY: 0,
+          startTranslateX: 0,
+          startTranslateY: 0,
+          startDistance: 0,
+          startScale: 1,
+          moved: false,
+          suppressClick: false,
+        },
         filterParsed: false,
         familyFilters: [],
         weightFilters: [],
@@ -1311,6 +1655,7 @@ export function renderIndexPage(): string {
           detail: '数据来源',
           kind: 'empty',
         },
+        articleCache: null,
       };
 
       var els = {
@@ -1339,6 +1684,16 @@ export function renderIndexPage(): string {
         downloadFileName: document.getElementById('downloadFileName'),
         cancelDownloadBtn: document.getElementById('cancelDownloadBtn'),
         confirmDownloadBtn: document.getElementById('confirmDownloadBtn'),
+        previewModal: document.getElementById('previewModal'),
+        previewTitle: document.getElementById('previewTitle'),
+        previewMeta: document.getElementById('previewMeta'),
+        previewStage: document.getElementById('previewStage'),
+        previewMainImage: document.getElementById('previewMainImage'),
+        previewPrevBtn: document.getElementById('previewPrevBtn'),
+        previewNextBtn: document.getElementById('previewNextBtn'),
+        previewThumbs: document.getElementById('previewThumbs'),
+        previewArticleLink: document.getElementById('previewArticleLink'),
+        closePreviewBtn: document.getElementById('closePreviewBtn'),
         filterInputs: document.querySelectorAll('[data-filter-group]'),
       };
 
@@ -1388,6 +1743,23 @@ export function renderIndexPage(): string {
         } catch {
           return false;
         }
+      }
+
+      function closePreviewModal() {
+        state.activePreviewId = '';
+        state.previewImages = [];
+        state.previewIndex = 0;
+        resetPreviewTransform(false);
+        state.previewPointers = {};
+        state.previewGesture.mode = '';
+        els.previewModal.classList.remove('open');
+        els.previewModal.setAttribute('aria-hidden', 'true');
+        els.previewTitle.textContent = '';
+        els.previewMeta.textContent = '';
+        els.previewMainImage.removeAttribute('src');
+        els.previewMainImage.alt = '';
+        els.previewThumbs.innerHTML = '';
+        els.previewArticleLink.href = '#';
       }
 
       function closeFilePopover() {
@@ -1468,6 +1840,306 @@ export function renderIndexPage(): string {
         els.downloadModal.classList.remove('open');
         els.downloadModal.setAttribute('aria-hidden', 'true');
         els.downloadFileName.textContent = '';
+      }
+
+      function activePreviewArticle() {
+        return state.articleMatches[state.activePreviewId] || null;
+      }
+
+      function activePreviewItem() {
+        return state.items.find(function (entry) {
+          return entry.id === state.activePreviewId;
+        });
+      }
+
+      function clamp(value, min, max) {
+        return Math.max(min, Math.min(value, max));
+      }
+
+      function previewScale() {
+        return state.previewTransform.scale;
+      }
+
+      function applyPreviewTransform(smooth) {
+        var transform = state.previewTransform;
+        els.previewMainImage.style.transition =
+          smooth === false ? 'none' : '';
+        els.previewMainImage.style.transform =
+          'translate3d(' +
+          transform.x.toFixed(1) +
+          'px, ' +
+          transform.y.toFixed(1) +
+          'px, 0) scale(' +
+          transform.scale.toFixed(3) +
+          ')';
+        els.previewStage.classList.toggle('zoom-active', transform.scale > 1.01);
+        els.previewStage.setAttribute(
+          'aria-label',
+          transform.scale > 1.01 ? '恢复预览图大小' : '放大当前预览图',
+        );
+      }
+
+      function resetPreviewTransform(smooth) {
+        state.previewTransform = {
+          scale: 1,
+          x: 0,
+          y: 0,
+        };
+        applyPreviewTransform(smooth);
+      }
+
+      function setPreviewTransform(next, smooth) {
+        state.previewTransform = {
+          scale: clamp(next.scale, 1, 5),
+          x: next.x || 0,
+          y: next.y || 0,
+        };
+        if (state.previewTransform.scale <= 1.01) {
+          state.previewTransform.scale = 1;
+          state.previewTransform.x = 0;
+          state.previewTransform.y = 0;
+        }
+        applyPreviewTransform(smooth);
+      }
+
+      function togglePreviewZoom() {
+        if (previewScale() > 1.01) {
+          resetPreviewTransform(true);
+          return;
+        }
+
+        setPreviewTransform(
+          {
+            scale: 2.2,
+            x: 0,
+            y: 0,
+          },
+          true,
+        );
+      }
+
+      function previewPointerList() {
+        return Object.values(state.previewPointers);
+      }
+
+      function pointerDistance(first, second) {
+        var x = first.clientX - second.clientX;
+        var y = first.clientY - second.clientY;
+        return Math.hypot(x, y);
+      }
+
+      function startPreviewPan(pointer) {
+        state.previewGesture.mode = previewScale() > 1.01 ? 'pan' : 'tap';
+        state.previewGesture.startX = pointer.clientX;
+        state.previewGesture.startY = pointer.clientY;
+        state.previewGesture.startTranslateX = state.previewTransform.x;
+        state.previewGesture.startTranslateY = state.previewTransform.y;
+        state.previewGesture.moved = false;
+      }
+
+      function startPreviewPinch(pointers) {
+        if (pointers.length < 2) return;
+        state.previewGesture.mode = 'pinch';
+        state.previewGesture.startDistance = pointerDistance(pointers[0], pointers[1]);
+        state.previewGesture.startScale = previewScale();
+        state.previewGesture.startTranslateX = state.previewTransform.x;
+        state.previewGesture.startTranslateY = state.previewTransform.y;
+        state.previewGesture.moved = true;
+        state.previewGesture.suppressClick = true;
+      }
+
+      function handlePreviewPointerDown(event) {
+        if (!state.previewImages.length) return;
+
+        event.preventDefault();
+        els.previewStage.setPointerCapture(event.pointerId);
+        state.previewPointers[event.pointerId] = {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        };
+        els.previewStage.classList.add('interacting');
+
+        var pointers = previewPointerList();
+        if (pointers.length >= 2) {
+          startPreviewPinch(pointers);
+        } else {
+          startPreviewPan(pointers[0]);
+        }
+      }
+
+      function handlePreviewPointerMove(event) {
+        var pointer = state.previewPointers[event.pointerId];
+        if (!pointer) return;
+
+        event.preventDefault();
+        pointer.clientX = event.clientX;
+        pointer.clientY = event.clientY;
+
+        var pointers = previewPointerList();
+        if (pointers.length >= 2) {
+          if (state.previewGesture.mode !== 'pinch') {
+            startPreviewPinch(pointers);
+          }
+
+          var distance = pointerDistance(pointers[0], pointers[1]);
+          if (state.previewGesture.startDistance > 0) {
+            setPreviewTransform(
+              {
+                scale:
+                  state.previewGesture.startScale *
+                  (distance / state.previewGesture.startDistance),
+                x: state.previewTransform.x,
+                y: state.previewTransform.y,
+              },
+              false,
+            );
+          }
+          state.previewGesture.moved = true;
+          state.previewGesture.suppressClick = true;
+          return;
+        }
+
+        if (state.previewGesture.mode !== 'pan' || previewScale() <= 1.01) {
+          var tapDelta = Math.hypot(
+            event.clientX - state.previewGesture.startX,
+            event.clientY - state.previewGesture.startY,
+          );
+          if (tapDelta > 8) {
+            state.previewGesture.moved = true;
+            state.previewGesture.suppressClick = true;
+          }
+          return;
+        }
+
+        var deltaX = event.clientX - state.previewGesture.startX;
+        var deltaY = event.clientY - state.previewGesture.startY;
+        if (Math.hypot(deltaX, deltaY) > 2) {
+          state.previewGesture.moved = true;
+          state.previewGesture.suppressClick = true;
+          els.previewStage.classList.add('dragging');
+        }
+
+        setPreviewTransform(
+          {
+            scale: previewScale(),
+            x: state.previewGesture.startTranslateX + deltaX,
+            y: state.previewGesture.startTranslateY + deltaY,
+          },
+          false,
+        );
+      }
+
+      function handlePreviewPointerEnd(event) {
+        var modeBeforeEnd = state.previewGesture.mode;
+        var movedBeforeEnd = state.previewGesture.moved;
+        if (state.previewPointers[event.pointerId]) {
+          delete state.previewPointers[event.pointerId];
+        }
+
+        try {
+          els.previewStage.releasePointerCapture(event.pointerId);
+        } catch {
+          // Pointer capture can already be released by the browser.
+        }
+
+        var pointers = previewPointerList();
+        if (pointers.length === 0) {
+          els.previewStage.classList.remove('interacting', 'dragging');
+          applyPreviewTransform(true);
+          if (!movedBeforeEnd && modeBeforeEnd !== 'pinch') {
+            togglePreviewZoom();
+            state.previewGesture.suppressClick = true;
+          }
+          return;
+        }
+
+        startPreviewPan(pointers[0]);
+        state.previewGesture.suppressClick = true;
+      }
+
+      function handlePreviewWheel(event) {
+        if (!state.previewImages.length) return;
+
+        event.preventDefault();
+        var nextScale = previewScale() * (event.deltaY < 0 ? 1.12 : 0.88);
+        setPreviewTransform(
+          {
+            scale: nextScale,
+            x: state.previewTransform.x,
+            y: state.previewTransform.y,
+          },
+          false,
+        );
+      }
+
+      function setPreviewIndex(index) {
+        if (!state.previewImages.length) return;
+
+        var count = state.previewImages.length;
+        state.previewIndex = ((index % count) + count) % count;
+        resetPreviewTransform(false);
+        renderPreviewGallery();
+      }
+
+      function renderPreviewGallery() {
+        var article = activePreviewArticle();
+        var item = activePreviewItem();
+        var imageUrl = state.previewImages[state.previewIndex];
+        if (!article || !item || !imageUrl) return;
+
+        var label = article.topic || item.fontName || '字体预览';
+        var count = state.previewImages.length;
+        els.previewTitle.textContent = article.title || item.fontName || '字体预览';
+        els.previewMeta.textContent =
+          label +
+          ' · ' +
+          (state.previewIndex + 1) +
+          '/' +
+          count +
+          (article.score ? ' · 匹配 ' + Math.round(article.score * 100) + '%' : '');
+        els.previewMainImage.src = imageUrl;
+        els.previewMainImage.alt = label + ' ' + (state.previewIndex + 1);
+        els.previewPrevBtn.disabled = count <= 1;
+        els.previewNextBtn.disabled = count <= 1;
+        els.previewThumbs.innerHTML = state.previewImages
+          .map(function (thumbUrl, index) {
+            return (
+              '<button class="preview-thumb' +
+              (index === state.previewIndex ? ' active' : '') +
+              '" data-preview-index="' +
+              index +
+              '" type="button" aria-label="查看第 ' +
+              (index + 1) +
+              ' 张预览图">' +
+              '<img src="' +
+              escapeHtml(thumbUrl) +
+              '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" />' +
+              '</button>'
+            );
+          })
+          .join('');
+        applyPreviewTransform(true);
+      }
+
+      function openPreviewModal(id) {
+        var item = state.items.find(function (entry) {
+          return entry.id === id;
+        });
+        var article = state.articleMatches[id];
+        if (!item || !article || !Array.isArray(article.images)) return;
+
+        var images = article.images.filter(isHttpUrl);
+        if (!images.length) return;
+
+        state.activePreviewId = id;
+        state.previewImages = images;
+        state.previewIndex = 0;
+        resetPreviewTransform(false);
+        closeFilePopover();
+        els.previewArticleLink.href = article.link || '#';
+        renderPreviewGallery();
+        els.previewModal.classList.add('open');
+        els.previewModal.setAttribute('aria-hidden', 'false');
       }
 
       function positionFilePopover(anchor) {
@@ -1643,10 +2315,13 @@ export function renderIndexPage(): string {
       function applyFontData(data) {
         state.items = data.items || [];
         state.parsed = {};
+        state.articleMatches = data.articleMatches || {};
         state.loadingIds = {};
         closeFilePopover();
+        closePreviewModal();
         state.filterParsed = false;
         state.source = sourceInfoForData(data);
+        state.articleCache = data.articleCache || null;
         applyParsedCache(data.parsedCache);
         render();
       }
@@ -1745,6 +2420,7 @@ export function renderIndexPage(): string {
         els.fontList.innerHTML = items
           .map(function (item, index) {
             var parsed = state.parsed[item.id];
+            var article = state.articleMatches[item.id];
             var loading = state.loadingIds[item.id];
             var tags = fontTags(item.fontName || '');
             var tagsHtml = tags.length
@@ -1756,6 +2432,19 @@ export function renderIndexPage(): string {
                   .join('') +
                 '</div>'
               : '';
+            var articleHtml =
+              article && Array.isArray(article.images) && article.images.length
+                ? '<div class="article-links">' +
+                  '<button class="article-link" data-preview-id="' +
+                  escapeHtml(item.id) +
+                  '" type="button">预览图 ' +
+                  article.images.length +
+                  '</button>' +
+                  '<a class="article-link" href="' +
+                  escapeHtml(article.link) +
+                  '" target="_blank" rel="noopener noreferrer">相关文章</a>' +
+                  '</div>'
+                : '';
             var actionHtml = '';
 
             if (loading) {
@@ -1804,6 +2493,7 @@ export function renderIndexPage(): string {
               escapeHtml(item.fontName) +
               '</p>' +
               tagsHtml +
+              articleHtml +
               '<div class="url">' +
               escapeHtml(item.lanzouUrl) +
               '</div>' +
@@ -1985,9 +2675,12 @@ export function renderIndexPage(): string {
 
         state.items = [];
         state.parsed = {};
+        state.articleMatches = {};
         state.loadingIds = {};
         closeFilePopover();
+        closePreviewModal();
         state.source = emptySourceInfo();
+        state.articleCache = data.articleCache || null;
         render();
         setStatus(
           state.ready ? '暂无缓存，可点击同步文档' : '请先在管理后台保存配置',
@@ -2074,6 +2767,12 @@ export function renderIndexPage(): string {
       });
       window.addEventListener('resize', closeFilePopover);
       els.fontList.addEventListener('click', function (event) {
+        var previewButton = event.target.closest('[data-preview-id]');
+        if (previewButton) {
+          openPreviewModal(previewButton.getAttribute('data-preview-id'));
+          return;
+        }
+
         var parseButton = event.target.closest('[data-parse-id]');
         if (parseButton) {
           parseItem(parseButton.getAttribute('data-parse-id'));
@@ -2121,7 +2820,36 @@ export function renderIndexPage(): string {
       els.downloadModal.addEventListener('click', function (event) {
         if (event.target === els.downloadModal) closeDownloadModal();
       });
+      els.closePreviewBtn.addEventListener('click', closePreviewModal);
+      els.previewPrevBtn.addEventListener('click', function () {
+        setPreviewIndex(state.previewIndex - 1);
+      });
+      els.previewNextBtn.addEventListener('click', function () {
+        setPreviewIndex(state.previewIndex + 1);
+      });
+      els.previewStage.addEventListener('click', function () {
+        if (!state.previewImages.length) return;
+        if (state.previewGesture.suppressClick) {
+          state.previewGesture.suppressClick = false;
+          return;
+        }
+        togglePreviewZoom();
+      });
+      els.previewStage.addEventListener('pointerdown', handlePreviewPointerDown);
+      els.previewStage.addEventListener('pointermove', handlePreviewPointerMove);
+      els.previewStage.addEventListener('pointerup', handlePreviewPointerEnd);
+      els.previewStage.addEventListener('pointercancel', handlePreviewPointerEnd);
+      els.previewStage.addEventListener('wheel', handlePreviewWheel, { passive: false });
+      els.previewThumbs.addEventListener('click', function (event) {
+        var thumb = event.target.closest('[data-preview-index]');
+        if (!thumb) return;
+        setPreviewIndex(Number(thumb.getAttribute('data-preview-index')));
+      });
+      els.previewModal.addEventListener('click', function (event) {
+        if (event.target === els.previewModal) closePreviewModal();
+      });
       document.addEventListener('click', function (event) {
+        if (els.previewModal.contains(event.target)) return;
         if (!state.floatingFiles.itemId) return;
         if (els.downloadModal.contains(event.target)) return;
         if (els.filePopover.contains(event.target)) return;
@@ -2131,12 +2859,24 @@ export function renderIndexPage(): string {
       });
       document.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
-          if (els.downloadModal.classList.contains('open')) {
+          if (els.previewModal.classList.contains('open')) {
+            closePreviewModal();
+          } else if (els.downloadModal.classList.contains('open')) {
             closeDownloadModal();
           } else {
             closeFilePopover();
             render();
           }
+        } else if (
+          els.previewModal.classList.contains('open') &&
+          event.key === 'ArrowLeft'
+        ) {
+          setPreviewIndex(state.previewIndex - 1);
+        } else if (
+          els.previewModal.classList.contains('open') &&
+          event.key === 'ArrowRight'
+        ) {
+          setPreviewIndex(state.previewIndex + 1);
         }
       });
 
