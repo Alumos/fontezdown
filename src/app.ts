@@ -3,6 +3,7 @@ import apiRouter from './routes/api.js';
 import lanzouRouter from './routes/lanzou.js';
 import { renderAdminPage } from './ui/adminPage.js';
 import { renderIndexPage } from './ui/indexPage.js';
+import { startDailySync, stopDailySync } from './utils/dailySync.js';
 import { serve } from '@hono/node-server';
 import dayjs from 'dayjs';
 import { Hono } from 'hono';
@@ -52,14 +53,17 @@ const server = serve({ fetch: app.fetch, port: config.PORT }, () => {
   console.log(
     `[${dayjs().format('YYYY-MM-DD HH:mm:ss')}] Server running at http://127.0.0.1:${config.PORT}`,
   );
+  startDailySync();
 });
 
 process.on('SIGINT', () => {
+  stopDailySync();
   server.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
+  stopDailySync();
   server.close((err) => {
     if (err) {
       console.error(err);

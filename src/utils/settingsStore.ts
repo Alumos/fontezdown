@@ -14,7 +14,13 @@ export interface ManagedSettings {
   accessToken: string;
   openId: string;
   lanzouPwd: string;
-  wechatRssUrl: string;
+  wechatRssUrls: string[];
+  dailySyncEnabled: boolean;
+  dailySyncTime: string;
+}
+
+interface StoredManagedSettings extends Partial<ManagedSettings> {
+  wechatRssUrl?: unknown;
 }
 
 interface AdminState {
@@ -47,7 +53,11 @@ interface SessionPayload {
   iat: number;
 }
 
-const STORE_PATH = resolve(process.cwd(), "data", "settings.local");
+const LEGACY_STORE_PATH = resolve(process.cwd(), "data", "settings.local");
+const STORE_PATH = resolve(
+  process.env.FONTEZDOWN_DATA_DIR || dirname(LEGACY_STORE_PATH),
+  "settings.local",
+);
 const SESSION_COOKIE = "inugamishi_admin";
 const ACCESS_SESSION_COOKIE = "inugamishi_access";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
@@ -61,7 +71,72 @@ function defaultSettings(): ManagedSettings {
     accessToken: config.tencentDocs.accessToken,
     openId: config.tencentDocs.openId,
     lanzouPwd: "",
-    wechatRssUrl: config.wechatRss.rssUrl,
+    wechatRssUrls: config.wechatRss.rssUrls,
+    dailySyncEnabled: true,
+    dailySyncTime: "03:00",
+  };
+}
+
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(
+    new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function normalizeSettings(value: unknown): ManagedSettings {
+  const defaults = defaultSettings();
+  const stored =
+    typeof value === "object" && value !== null
+      ? (value as StoredManagedSettings)
+      : {};
+  const hasRssUrls = Array.isArray(stored.wechatRssUrls);
+  const hasLegacyRssUrl = Object.prototype.hasOwnProperty.call(
+    stored,
+    "wechatRssUrl",
+  );
+  const legacyRssUrl =
+    typeof stored.wechatRssUrl === "string" ? stored.wechatRssUrl.trim() : "";
+  const dailySyncTime =
+    typeof stored.dailySyncTime === "string" &&
+    /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(stored.dailySyncTime)
+      ? stored.dailySyncTime
+      : defaults.dailySyncTime;
+
+  return {
+    docUrl:
+      typeof stored.docUrl === "string" ? stored.docUrl : defaults.docUrl,
+    clientId:
+      typeof stored.clientId === "string"
+        ? stored.clientId
+        : defaults.clientId,
+    accessToken:
+      typeof stored.accessToken === "string"
+        ? stored.accessToken
+        : defaults.accessToken,
+    openId:
+      typeof stored.openId === "string" ? stored.openId : defaults.openId,
+    lanzouPwd:
+      typeof stored.lanzouPwd === "string"
+        ? stored.lanzouPwd
+        : defaults.lanzouPwd,
+    wechatRssUrls: hasRssUrls
+      ? uniqueStrings(stored.wechatRssUrls)
+      : hasLegacyRssUrl
+        ? legacyRssUrl
+          ? [legacyRssUrl]
+          : []
+        : defaults.wechatRssUrls,
+    dailySyncEnabled:
+      typeof stored.dailySyncEnabled === "boolean"
+        ? stored.dailySyncEnabled
+        : defaults.dailySyncEnabled,
+    dailySyncTime,
   };
 }
 
@@ -81,21 +156,23 @@ function emptyAccess(): AccessState {
 }
 
 function readStore(): SettingsFile {
-  if (!existsSync(STORE_PATH)) {
+  const readPath = existsSync(STORE_PATH)
+    ? STORE_PATH
+    : STORE_PATH !== LEGACY_STORE_PATH && existsSync(LEGACY_STORE_PATH)
+      ? LEGACY_STORE_PATH
+      : "";
+  if (!readPath) {
     return {
       settings: defaultSettings(),
       admin: emptyAdmin(),
     };
   }
 
-  const raw = readFileSync(STORE_PATH, "utf-8");
+  const raw = readFileSync(readPath, "utf-8");
   const parsed = JSON.parse(raw) as Partial<SettingsFile>;
 
   return {
-    settings: {
-      ...defaultSettings(),
-      ...parsed.settings,
-    },
+    settings: normalizeSettings(parsed.settings),
     admin: {
       ...emptyAdmin(),
       ...parsed.admin,
@@ -168,9 +245,9 @@ export function saveManagedSettings(
   settings: ManagedSettings,
 ): ManagedSettings {
   const store = readStore();
-  store.settings = settings;
+  store.settings = normalizeSettings(settings);
   writeStore(store);
-  return settings;
+  return store.settings;
 }
 
 export function setupAdminPasscode(passcode: string): void {
@@ -309,7 +386,7 @@ export function publicConfigStatus(): {
       store.settings.openId,
     ),
     hasLanzouPassword: Boolean(store.settings.lanzouPwd),
-    hasWechatRss: Boolean(store.settings.wechatRssUrl),
+    hasWechatRss: store.settings.wechatRssUrls.length > 0,
     hasAccessPasscodes: Boolean(store.access?.passcodes.length),
   };
 }

@@ -1261,6 +1261,10 @@ export function renderIndexPage(): string {
           grid-template-columns: 1fr 1fr;
         }
 
+        .topbar .admin-link {
+          grid-column: 1 / -1;
+        }
+
         .btn {
           width: 100%;
         }
@@ -1415,8 +1419,9 @@ export function renderIndexPage(): string {
           </div>
         </div>
         <div class="actions">
-          <a class="btn secondary" href="/admin">管理后台</a>
           <button class="btn" id="syncBtn" type="button">同步文档</button>
+          <button class="btn green" id="syncArticlesBtn" type="button">同步文章</button>
+          <a class="btn secondary admin-link" href="/admin">管理后台</a>
         </div>
       </header>
 
@@ -1650,6 +1655,8 @@ export function renderIndexPage(): string {
         weightFilters: [],
         searchQuery: '',
         ready: false,
+        articleReady: false,
+        syncing: false,
         source: {
           label: '未载入',
           detail: '数据来源',
@@ -1668,6 +1675,7 @@ export function renderIndexPage(): string {
         statusDot: document.getElementById('statusDot'),
         statusText: document.getElementById('statusText'),
         syncBtn: document.getElementById('syncBtn'),
+        syncArticlesBtn: document.getElementById('syncArticlesBtn'),
         searchInput: document.getElementById('searchInput'),
         parsedFilterBtn: document.getElementById('parsedFilterBtn'),
         clearFiltersBtn: document.getElementById('clearFiltersBtn'),
@@ -2551,8 +2559,14 @@ export function renderIndexPage(): string {
         });
       }
 
+      function setSyncing(syncing) {
+        state.syncing = syncing;
+        els.syncBtn.disabled = syncing || !state.ready;
+        els.syncArticlesBtn.disabled = syncing || !state.articleReady;
+      }
+
       async function syncFonts() {
-        els.syncBtn.disabled = true;
+        setSyncing(true);
         setStatus('正在刷新腾讯文档缓存', '');
         try {
           var data = await postJson('/api/fonts/sync', {});
@@ -2595,7 +2609,34 @@ export function renderIndexPage(): string {
         } catch (error) {
           setStatus(error.message, 'err');
         } finally {
-          els.syncBtn.disabled = !state.ready;
+          setSyncing(false);
+        }
+      }
+
+      async function syncArticles() {
+        setSyncing(true);
+        setStatus('正在同步公众号文章', '');
+        try {
+          var data = await postJson('/api/articles/sync', {});
+          var fontData = await requestJson('/api/fonts/cache');
+          applyFontData(fontData);
+          var cache = data.cache || {};
+          var failureText = data.failedSourceCount
+            ? '，' + data.failedSourceCount + ' 个源失败'
+            : '';
+          setStatus(
+            '文章已同步：' +
+              (cache.articleCount || 0) +
+              ' 篇，' +
+              (cache.imageCount || 0) +
+              ' 张效果图' +
+              failureText,
+            data.failedSourceCount ? 'err' : 'ok',
+          );
+        } catch (error) {
+          setStatus(error.message, 'err');
+        } finally {
+          setSyncing(false);
         }
       }
 
@@ -2644,7 +2685,8 @@ export function renderIndexPage(): string {
       async function loadConfig() {
         var data = await requestJson('/api/config');
         state.ready = Boolean(data.isReady);
-        els.syncBtn.disabled = !state.ready;
+        state.articleReady = Boolean(data.hasWechatRss);
+        setSyncing(false);
         return data;
       }
 
@@ -2709,6 +2751,7 @@ export function renderIndexPage(): string {
       }
 
       els.syncBtn.addEventListener('click', syncFonts);
+      els.syncArticlesBtn.addEventListener('click', syncArticles);
       els.searchInput.addEventListener('input', function () {
         state.searchQuery = els.searchInput.value;
         closeFilePopover();

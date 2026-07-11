@@ -67,6 +67,13 @@ function initializeDatabase(database: DatabaseSync): void {
       fetched_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS article_source_meta (
+      rss_url TEXT PRIMARY KEY,
+      fetched_at TEXT NOT NULL,
+      article_count INTEGER NOT NULL,
+      image_count INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS articles (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
@@ -84,6 +91,15 @@ function initializeDatabase(database: DatabaseSync): void {
       FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS article_sources (
+      article_id TEXT NOT NULL,
+      rss_url TEXT NOT NULL,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL,
+      PRIMARY KEY (article_id, rss_url),
+      FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
+    );
+
     CREATE INDEX IF NOT EXISTS idx_fonts_sort_order
       ON fonts(sort_order);
 
@@ -98,6 +114,28 @@ function initializeDatabase(database: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_article_images_article_id
       ON article_images(article_id, image_index);
+
+    CREATE INDEX IF NOT EXISTS idx_article_sources_rss_url
+      ON article_sources(rss_url, article_id);
+
+    INSERT OR IGNORE INTO article_source_meta
+      (rss_url, fetched_at, article_count, image_count)
+    SELECT meta.rss_url,
+           meta.fetched_at,
+           COUNT(DISTINCT articles.id),
+           COUNT(article_images.image_url)
+      FROM article_cache_meta AS meta
+      LEFT JOIN articles ON 1 = 1
+      LEFT JOIN article_images ON article_images.article_id = articles.id
+     WHERE meta.rss_url <> ''
+     GROUP BY meta.rss_url, meta.fetched_at;
+
+    INSERT OR IGNORE INTO article_sources
+      (article_id, rss_url, first_seen_at, last_seen_at)
+    SELECT articles.id, meta.rss_url, meta.fetched_at, meta.fetched_at
+      FROM articles
+      CROSS JOIN article_cache_meta AS meta
+     WHERE meta.rss_url <> '';
   `);
 }
 

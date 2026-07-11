@@ -45,6 +45,38 @@ function envNumber(key: string, defaultValue: number): number {
   return Number.isFinite(value) && value > 0 ? value : defaultValue;
 }
 
+function envList(...keys: string[]): string[] {
+  const value = envValue(...keys);
+  if (!value) return [];
+
+  if (value.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.trim())
+              .filter(Boolean),
+          ),
+        );
+      }
+    } catch {
+      // Fall through to the comma/newline separated format.
+    }
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .split(/[\r\n,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 export const PORT = envNumber('PORT', 1103);
 export const rateLimit = {
   windowMs: 15 * 60 * 1000,
@@ -59,8 +91,15 @@ export const tencentDocs = {
   openId: envValue('TENCENT_DOC_OPEN_ID', 'QQ_DOC_OPEN_ID'),
 };
 
+const wechatRssUrls = envList(
+  'WECHAT_RSS_URLS',
+  'WECHAT_RSS_URL',
+  'WECHAT_ARTICLE_RSS_URL',
+);
+
 export const wechatRss = {
-  rssUrl: envValue('WECHAT_RSS_URL', 'WECHAT_ARTICLE_RSS_URL'),
+  rssUrls: wechatRssUrls,
+  rssUrl: wechatRssUrls[0] || '',
 };
 
 const config = {

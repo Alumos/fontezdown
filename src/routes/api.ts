@@ -1,11 +1,15 @@
 import config from "../config/config.js";
 import {
+  type ArticleCacheEntry,
   articleCacheSummary,
   readArticleCache,
   readArticleMatchesForItems,
-  syncWechatRssArticles,
 } from "../utils/articleCache.js";
-import { readFontCache, writeFontCache } from "../utils/fontCache.js";
+import {
+  dailySyncStatus,
+  rescheduleDailySync,
+} from "../utils/dailySync.js";
+import { readFontCache } from "../utils/fontCache.js";
 import { parseLanzouUrl } from "../utils/lanzou/lanzouParser.js";
 import {
   readParsedCacheForItems,
@@ -33,10 +37,10 @@ import {
   verifyAdminPasscode,
 } from "../utils/settingsStore.js";
 import {
-  type FontLinkItem,
-  type TencentCredentials,
-  syncTencentDocFonts,
-} from "../utils/tencentDocs.js";
+  syncConfiguredArticles,
+  syncConfiguredFonts,
+} from "../utils/syncTasks.js";
+import { type FontLinkItem } from "../utils/tencentDocs.js";
 import type { ParseSuccessData } from "../utils/types.js";
 import { type Context, Hono } from "hono";
 
@@ -66,7 +70,10 @@ interface AdminSettingsRequest {
   accessToken?: unknown;
   openId?: unknown;
   lanzouPwd?: unknown;
+  wechatRssUrls?: unknown;
   wechatRssUrl?: unknown;
+  dailySyncEnabled?: unknown;
+  dailySyncTime?: unknown;
 }
 
 interface AdminConfigImportRequest {
@@ -74,14 +81,17 @@ interface AdminConfigImportRequest {
   overwrite?: unknown;
 }
 
-const CONFIG_EXPORT_VERSION = 1;
+const CONFIG_EXPORT_VERSION = 2;
 const ADMIN_CONFIG_KEYS = [
   "docUrl",
   "clientId",
   "accessToken",
   "openId",
   "lanzouPwd",
+  "wechatRssUrls",
   "wechatRssUrl",
+  "dailySyncEnabled",
+  "dailySyncTime",
 ] as const;
 
 function stringValue(value: unknown): string {
@@ -90,14 +100,6 @@ function stringValue(value: unknown): string {
 
 function randomReadablePasscode(): string {
   return Math.random().toString(36).slice(2, 10).toUpperCase();
-}
-
-function settingsCredentials(settings: ManagedSettings): TencentCredentials {
-  return {
-    clientId: settings.clientId,
-    accessToken: settings.accessToken,
-    openId: settings.openId,
-  };
 }
 
 async function readJson<T>(request: Request): Promise<T> {
@@ -124,6 +126,38 @@ function validatePasscode(passcode: string): void {
   if (passcode.length < 4) throw new Error("口令至少需要 4 位");
 }
 
+function rssUrlsValue(body: AdminSettingsRequest): string[] {
+  const rawValues = Array.isArray(body.wechatRssUrls)
+    ? body.wechatRssUrls
+    : typeof body.wechatRssUrls === "string"
+      ? body.wechatRssUrls.split(/[\r\n,]+/)
+      : [body.wechatRssUrl];
+  const urls = Array.from(
+    new Set(rawValues.map((value) => stringValue(value)).filter(Boolean)),
+  );
+
+  for (const value of urls) {
+    let url: URL;
+    try {
+      url = new URL(value);
+    } catch {
+      throw new Error(`公众号 RSS 地址格式不正确：${value}`);
+    }
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("公众号 RSS 地址必须是 http 或 https");
+    }
+  }
+  return urls;
+}
+
+function dailySyncTimeValue(value: unknown): string {
+  const time = stringValue(value) || "03:00";
+  if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)) {
+    throw new Error("每日同步时间格式应为 HH:mm");
+  }
+  return time;
+}
+
 function settingsFromBody(body: AdminSettingsRequest): ManagedSettings {
   return {
     docUrl: stringValue(body.docUrl),
@@ -131,7 +165,12 @@ function settingsFromBody(body: AdminSettingsRequest): ManagedSettings {
     accessToken: stringValue(body.accessToken),
     openId: stringValue(body.openId),
     lanzouPwd: stringValue(body.lanzouPwd),
-    wechatRssUrl: stringValue(body.wechatRssUrl),
+    wechatRssUrls: rssUrlsValue(body),
+    dailySyncEnabled:
+      typeof body.dailySyncEnabled === "boolean"
+        ? body.dailySyncEnabled
+        : true,
+    dailySyncTime: dailySyncTimeValue(body.dailySyncTime),
   };
 }
 
@@ -145,6 +184,7 @@ function publicArticleCacheSummary(
   fetchedAt: string;
   articleCount: number;
   imageCount: number;
+  sourceCount: number;
 } | null {
   const summary = articleCacheSummary(cache);
   if (!summary) return null;
@@ -152,6 +192,20 @@ function publicArticleCacheSummary(
     fetchedAt: summary.fetchedAt,
     articleCount: summary.articleCount,
     imageCount: summary.imageCount,
+    sourceCount: summary.sourceCount,
+  };
+}
+
+function articleSyncPayload(cache: ArticleCacheEntry): {
+  cache: ReturnType<typeof articleCacheSummary>;
+  syncedSourceCount: number;
+  failedSourceCount: number;
+} {
+  const results = cache.sourceResults || [];
+  return {
+    cache: articleCacheSummary(cache),
+    syncedSourceCount: results.filter((result) => result.success).length,
+    failedSourceCount: results.filter((result) => !result.success).length,
   };
 }
 
@@ -160,8 +214,7 @@ function fontPayload<T extends FontItemsPayload>(cache: T): T & {
   articleMatches: ReturnType<typeof readArticleMatchesForItems>;
   articleCache: ReturnType<typeof publicArticleCacheSummary>;
 } {
-  const settings = getManagedSettings();
-  const articleCache = readArticleCache(settings.wechatRssUrl);
+  const articleCache = readArticleCache();
 
   return {
     ...cache,
@@ -301,31 +354,37 @@ router.post("/admin/settings", async (c) => {
   const denied = requireAdmin(c);
   if (denied) return denied;
 
-  const body = await readJson<AdminSettingsRequest>(c.req.raw);
-  const settings = settingsFromBody(body);
-  saveManagedSettings(settings);
-  return c.json({
-    code: 0,
-    msg: "保存成功",
-    data: {
-      hasDocUrl: Boolean(settings.docUrl),
-      hasTencentCredentials: Boolean(
-        settings.clientId && settings.accessToken && settings.openId,
-      ),
-      hasLanzouPassword: Boolean(settings.lanzouPwd),
-    },
-  });
+  try {
+    const body = await readJson<AdminSettingsRequest>(c.req.raw);
+    const settings = saveManagedSettings(settingsFromBody(body));
+    rescheduleDailySync();
+    return c.json({
+      code: 0,
+      msg: "保存成功",
+      data: {
+        hasDocUrl: Boolean(settings.docUrl),
+        hasTencentCredentials: Boolean(
+          settings.clientId && settings.accessToken && settings.openId,
+        ),
+        hasLanzouPassword: Boolean(settings.lanzouPwd),
+        hasWechatRss: settings.wechatRssUrls.length > 0,
+        dailySync: dailySyncStatus(),
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ code: 1, msg: message }, 400);
+  }
 });
 
 router.get("/admin/articles/cache", (c) => {
   const denied = requireAdmin(c);
   if (denied) return denied;
 
-  const settings = getManagedSettings();
   return c.json({
     code: 0,
     data: {
-      cache: articleCacheSummary(readArticleCache(settings.wechatRssUrl)),
+      cache: articleCacheSummary(readArticleCache()),
     },
   });
 });
@@ -334,15 +393,18 @@ router.post("/admin/articles/sync", async (c) => {
   const denied = requireAdmin(c);
   if (denied) return denied;
 
-  const settings = getManagedSettings();
-
   try {
-    const cache = await syncWechatRssArticles(settings.wechatRssUrl);
+    const cache = await syncConfiguredArticles();
+    const payload = articleSyncPayload(cache);
     return c.json({
       code: 0,
-      msg: "公众号文章同步成功",
+      msg:
+        payload.failedSourceCount > 0
+          ? `公众号文章部分同步成功，${payload.failedSourceCount} 个源失败`
+          : "公众号文章同步成功",
       data: {
-        cache: articleCacheSummary(cache),
+        ...payload,
+        sources: cache.sourceResults || [],
       },
     });
   } catch (error) {
@@ -375,8 +437,8 @@ router.post("/admin/config/import", async (c) => {
       throw new Error("导入前需要确认覆盖当前配置");
     }
 
-    const settings = settingsFromImport(body.config);
-    saveManagedSettings(settings);
+    const settings = saveManagedSettings(settingsFromImport(body.config));
+    rescheduleDailySync();
     return c.json({
       code: 0,
       msg: "导入成功",
@@ -458,6 +520,27 @@ router.delete("/admin/access-passcodes/:id", (c) => {
   }
 });
 
+router.post("/articles/sync", async (c) => {
+  const denied = requireAccess(c);
+  if (denied) return denied;
+
+  try {
+    const cache = await syncConfiguredArticles();
+    const payload = articleSyncPayload(cache);
+    return c.json({
+      code: 0,
+      msg:
+        payload.failedSourceCount > 0
+          ? `公众号文章部分同步成功，${payload.failedSourceCount} 个源失败`
+          : "公众号文章同步成功",
+      data: payload,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return c.json({ code: 1, msg: message }, 400);
+  }
+});
+
 router.post("/fonts/sync", async (c) => {
   const denied = requireAccess(c);
   if (denied) return denied;
@@ -466,11 +549,7 @@ router.post("/fonts/sync", async (c) => {
   const docUrl = settings.docUrl || config.tencentDocs.docUrl;
 
   try {
-    const data = await syncTencentDocFonts({
-      docUrl,
-      credentials: settingsCredentials(settings),
-    });
-    const cache = writeFontCache(data);
+    const cache = await syncConfiguredFonts(settings);
 
     return c.json({
       code: 0,
@@ -526,9 +605,7 @@ router.get("/fonts/cache", (c) => {
           items: [],
           fromCache: false,
           articleMatches: {},
-          articleCache: publicArticleCacheSummary(
-            readArticleCache(getManagedSettings().wechatRssUrl),
-          ),
+          articleCache: publicArticleCacheSummary(readArticleCache()),
         },
   });
 });

@@ -33,6 +33,8 @@
 - 🫧 **液态玻璃风格** — SVG 滤镜实现实时毛玻璃效果，自适应网格布局
 - 🔍 **分类筛选** — 按字体类别（丸系 / 圆系 / 超级系 / 黑系 / 楷系）和字重（三字重～多字重）筛选
 - 🖼️ **预览图弹窗** — 公众号文章图片自动关联，支持缩放 / 拖拽 / 捏合手势
+- 📡 **多 RSS 增量同步** — 历史源和持续更新源可同时配置，文章与图片记录只增量合并
+- 🕒 **每日顺序同步** — 按服务器本地时间先同步腾讯文档，再逐个同步公众号 RSS
 - 📦 **文件列表浮层** — 蓝奏云解析结果直接展示，点击即下载
 - 📊 **实时统计面板** — 字体总数 / 当前显示 / 已解析 / 可下载文件数
 
@@ -125,11 +127,13 @@ TENCENT_DOC_URL=https://docs.qq.com/doc/xxxx
 TENCENT_DOC_CLIENT_ID=your_client_id
 TENCENT_DOC_ACCESS_TOKEN=your_access_token
 TENCENT_DOC_OPEN_ID=your_open_id
-WECHAT_RSS_URL=https://example.com/rss/wechat/channel/xxx
+WECHAT_RSS_URLS=https://example.com/rss/history,https://example.com/rss/current
 FONTEZDOWN_DATA_DIR=./data
 ```
 
-> 💡 环境变量仅作为初始默认值。在后台页面 `/admin` 保存配置后，会持久化到 `data/settings.local`。
+> 💡 `WECHAT_RSS_URLS` 支持逗号、换行分隔或 JSON 字符串数组，旧的 `WECHAT_RSS_URL` 仍然兼容。环境变量仅作为初始默认值，在后台页面 `/admin` 保存后会持久化到 `data/settings.local`。
+
+后台可以增删多个公众号 RSS 源，并设置每日自动同步时间（默认 `03:00`，按服务器本地时间）。从配置中删除 RSS 源不会删除 SQLite 中已经获取的文章和图片 URL 记录；后续同步也会增量合并，不会因源内容缩减而清理旧文章。
 
 ### 数据目录
 
@@ -163,6 +167,7 @@ data/
 | `/api/config` | `GET` | 公共配置状态 |
 | `/api/fonts/sync` | `POST` | 从腾讯文档同步字体列表 |
 | `/api/fonts/cache` | `GET` | 读取本地字体缓存 |
+| `/api/articles/sync` | `POST` | 从主界面同步所有公众号 RSS |
 | `/api/lanzou/parse` | `POST` | 解析蓝奏云链接为下载地址 |
 | `/api/access/login` | `POST` | 首页口令登录 |
 | `/api/admin/settings` | `GET/POST` | 后台配置读写 |

@@ -166,6 +166,55 @@ export function renderAdminPage(): string {
         gap: 7px;
       }
 
+      .rss-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .rss-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 42px;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .rss-remove {
+        width: 42px;
+        height: 42px;
+        display: inline-grid;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        background: rgba(255, 255, 255, 0.58);
+        color: var(--red);
+        font-size: 24px;
+        line-height: 1;
+      }
+
+      .schedule-row {
+        display: grid;
+        grid-template-columns: auto minmax(120px, 180px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+      }
+
+      .toggle-control {
+        min-height: 46px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--ink);
+        font-size: 14px;
+      }
+
+      .toggle-control input {
+        width: 18px;
+        min-height: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: var(--green);
+      }
+
       label {
         color: var(--muted);
         font-size: 12px;
@@ -355,6 +404,10 @@ export function renderAdminPage(): string {
           grid-template-columns: 1fr;
           align-items: stretch;
         }
+
+        .schedule-row {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -425,8 +478,22 @@ export function renderAdminPage(): string {
               <input id="lanzouPwd" autocomplete="off" type="password" />
             </div>
             <div class="field">
-              <label for="wechatRssUrl">公众号 RSS 地址</label>
-              <input id="wechatRssUrl" autocomplete="off" />
+              <label>公众号 RSS 源</label>
+              <div class="rss-list" id="wechatRssList"></div>
+              <button class="btn secondary row" id="addWechatRssBtn" type="button">
+                添加 RSS 源
+              </button>
+            </div>
+            <div class="field">
+              <label for="dailySyncTime">每日自动同步</label>
+              <div class="schedule-row">
+                <label class="toggle-control" for="dailySyncEnabled">
+                  <input id="dailySyncEnabled" type="checkbox" />
+                  <span>启用</span>
+                </label>
+                <input id="dailySyncTime" type="time" step="60" />
+                <span class="status">服务器本地时间</span>
+              </div>
             </div>
           </div>
           <div class="actions">
@@ -493,6 +560,7 @@ export function renderAdminPage(): string {
       var state = {
         mode: 'login',
         accessPasscodes: [],
+        wechatRssUrls: [''],
       };
 
       var els = {
@@ -519,7 +587,10 @@ export function renderAdminPage(): string {
         accessToken: document.getElementById('accessToken'),
         openId: document.getElementById('openId'),
         lanzouPwd: document.getElementById('lanzouPwd'),
-        wechatRssUrl: document.getElementById('wechatRssUrl'),
+        wechatRssList: document.getElementById('wechatRssList'),
+        addWechatRssBtn: document.getElementById('addWechatRssBtn'),
+        dailySyncEnabled: document.getElementById('dailySyncEnabled'),
+        dailySyncTime: document.getElementById('dailySyncTime'),
         currentPasscode: document.getElementById('currentPasscode'),
         nextPasscode: document.getElementById('nextPasscode'),
       };
@@ -585,23 +656,62 @@ export function renderAdminPage(): string {
         return requestJson(url, { method: 'DELETE' });
       }
 
+      function renderWechatRssRows() {
+        if (!state.wechatRssUrls.length) state.wechatRssUrls = [''];
+        els.wechatRssList.innerHTML = state.wechatRssUrls
+          .map(function (value, index) {
+            return (
+              '<div class="rss-row">' +
+              '<input data-rss-index="' +
+              index +
+              '" autocomplete="off" inputmode="url" value="' +
+              escapeHtml(value) +
+              '" placeholder="https://example.com/rss/..." />' +
+              '<button class="rss-remove" data-remove-rss-index="' +
+              index +
+              '" type="button" aria-label="移除 RSS 源" title="移除 RSS 源">×</button>' +
+              '</div>'
+            );
+          })
+          .join('');
+      }
+
+      function rssValuesFromInputs() {
+        return Array.prototype.map.call(
+          els.wechatRssList.querySelectorAll('[data-rss-index]'),
+          function (input) {
+            return input.value.trim();
+          },
+        );
+      }
+
       function applySettings(settings) {
         els.docUrl.value = settings.docUrl || '';
         els.clientId.value = settings.clientId || '';
         els.accessToken.value = settings.accessToken || '';
         els.openId.value = settings.openId || '';
         els.lanzouPwd.value = settings.lanzouPwd || '';
-        els.wechatRssUrl.value = settings.wechatRssUrl || '';
+        state.wechatRssUrls = Array.isArray(settings.wechatRssUrls)
+          ? settings.wechatRssUrls.slice()
+          : settings.wechatRssUrl
+            ? [settings.wechatRssUrl]
+            : [''];
+        renderWechatRssRows();
+        els.dailySyncEnabled.checked = settings.dailySyncEnabled !== false;
+        els.dailySyncTime.value = settings.dailySyncTime || '03:00';
       }
 
       function currentSettingsBody() {
+        var rssUrls = rssValuesFromInputs().filter(Boolean);
         return {
           docUrl: els.docUrl.value.trim(),
           clientId: els.clientId.value.trim(),
           accessToken: els.accessToken.value.trim(),
           openId: els.openId.value.trim(),
           lanzouPwd: els.lanzouPwd.value.trim(),
-          wechatRssUrl: els.wechatRssUrl.value.trim(),
+          wechatRssUrls: Array.from(new Set(rssUrls)),
+          dailySyncEnabled: els.dailySyncEnabled.checked,
+          dailySyncTime: els.dailySyncTime.value || '03:00',
         };
       }
 
@@ -713,6 +823,23 @@ export function renderAdminPage(): string {
         if (event.key === 'Enter') els.authBtn.click();
       });
 
+      els.addWechatRssBtn.addEventListener('click', function () {
+        state.wechatRssUrls = rssValuesFromInputs();
+        state.wechatRssUrls.push('');
+        renderWechatRssRows();
+        var inputs = els.wechatRssList.querySelectorAll('[data-rss-index]');
+        if (inputs.length) inputs[inputs.length - 1].focus();
+      });
+
+      els.wechatRssList.addEventListener('click', function (event) {
+        var button = event.target.closest('[data-remove-rss-index]');
+        if (!button) return;
+        state.wechatRssUrls = rssValuesFromInputs();
+        state.wechatRssUrls.splice(Number(button.dataset.removeRssIndex), 1);
+        if (!state.wechatRssUrls.length) state.wechatRssUrls.push('');
+        renderWechatRssRows();
+      });
+
       els.settingsForm.addEventListener('submit', async function (event) {
         event.preventDefault();
         try {
@@ -730,13 +857,17 @@ export function renderAdminPage(): string {
           await postJson('/api/admin/settings', currentSettingsBody());
           var data = await postJson('/api/admin/articles/sync', {});
           var cache = data.cache || {};
+          var failureText = data.failedSourceCount
+            ? '，' + data.failedSourceCount + ' 个源失败'
+            : '';
           setStatus(
             '文章已同步：' +
               (cache.articleCount || 0) +
               ' 篇，' +
               (cache.imageCount || 0) +
-              ' 张效果图',
-            'ok',
+              ' 张效果图' +
+              failureText,
+            data.failedSourceCount ? 'err' : 'ok',
           );
         } catch (error) {
           setStatus(error.message, 'err');

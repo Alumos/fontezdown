@@ -14,9 +14,19 @@ export interface ArticleItem {
 }
 
 export interface ArticleCacheEntry {
-  rssUrl: string;
+  rssUrls: string[];
   fetchedAt: string;
   items: ArticleItem[];
+  sourceResults?: ArticleSourceSyncResult[];
+}
+
+export interface ArticleSourceSyncResult {
+  rssUrl: string;
+  success: boolean;
+  fetchedAt?: string;
+  articleCount?: number;
+  imageCount?: number;
+  error?: string;
 }
 
 export interface ArticleMatchPayload {
@@ -51,6 +61,14 @@ function rowString(
   return stringValue(row?.[key]);
 }
 
+function rowNumber(
+  row: Record<string, unknown> | undefined,
+  key: string,
+): number {
+  const value = row?.[key];
+  return typeof value === "number" ? value : 0;
+}
+
 function unique(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -58,14 +76,15 @@ function unique(values: string[]): string[] {
 function assertRssUrl(rssUrl: string): void {
   if (!rssUrl) throw new Error("请先填写公众号 RSS 地址");
 
+  let url: URL;
   try {
-    const url = new URL(rssUrl);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      throw new Error("公众号 RSS 地址必须是 http 或 https");
-    }
-  } catch (error) {
-    if (error instanceof Error) throw error;
+    url = new URL(rssUrl);
+  } catch {
     throw new Error("公众号 RSS 地址格式不正确");
+  }
+
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("公众号 RSS 地址必须是 http 或 https");
   }
 }
 
@@ -165,26 +184,56 @@ function parseRssItems(xml: string): ArticleItem[] {
   return items;
 }
 
-function replaceArticleCache(entry: ArticleCacheEntry): void {
+function mergeArticleSource(entry: {
+  rssUrl: string;
+  fetchedAt: string;
+  items: ArticleItem[];
+}): void {
   const db = getCacheDb();
 
   runInCacheTransaction(() => {
-    db.prepare("DELETE FROM article_images").run();
-    db.prepare("DELETE FROM articles").run();
-    db.prepare("DELETE FROM article_cache_meta").run();
     db.prepare(
-      `INSERT INTO article_cache_meta (id, rss_url, fetched_at)
-       VALUES (1, ?, ?)`,
-    ).run(entry.rssUrl, entry.fetchedAt);
+      `INSERT INTO article_source_meta
+        (rss_url, fetched_at, article_count, image_count)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(rss_url) DO UPDATE SET
+         fetched_at = excluded.fetched_at,
+         article_count = excluded.article_count,
+         image_count = excluded.image_count`,
+    ).run(
+      entry.rssUrl,
+      entry.fetchedAt,
+      entry.items.length,
+      entry.items.reduce((sum, item) => sum + item.images.length, 0),
+    );
+
+    const maxSortOrder = rowNumber(
+      db.prepare("SELECT MAX(sort_order) AS value FROM articles").get(),
+      "value",
+    );
 
     const insertArticle = db.prepare(
       `INSERT INTO articles
         (id, title, topic, link, published_at, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         topic = excluded.topic,
+         link = excluded.link,
+         published_at = excluded.published_at`,
     );
     const insertImage = db.prepare(
       `INSERT INTO article_images (article_id, image_index, image_url)
-       VALUES (?, ?, ?)`,
+       VALUES (?, ?, ?)
+       ON CONFLICT(article_id, image_index) DO UPDATE SET
+         image_url = excluded.image_url`,
+    );
+    const linkSource = db.prepare(
+      `INSERT INTO article_sources
+        (article_id, rss_url, first_seen_at, last_seen_at)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(article_id, rss_url) DO UPDATE SET
+         last_seen_at = excluded.last_seen_at`,
     );
 
     entry.items.forEach((item, articleIndex) => {
@@ -194,8 +243,9 @@ function replaceArticleCache(entry: ArticleCacheEntry): void {
         item.topic,
         item.link,
         item.publishedAt,
-        articleIndex,
+        maxSortOrder + articleIndex + 1,
       );
+      linkSource.run(item.id, entry.rssUrl, entry.fetchedAt, entry.fetchedAt);
       item.images.forEach((imageUrl, imageIndex) => {
         insertImage.run(item.id, imageIndex, imageUrl);
       });
@@ -221,7 +271,11 @@ function readArticles(): ArticleItem[] {
     .prepare(
       `SELECT id, title, topic, link, published_at
        FROM articles
-       ORDER BY sort_order ASC`,
+       ORDER BY
+         CASE WHEN published_at = '' THEN 1 ELSE 0 END,
+         published_at DESC,
+         sort_order ASC,
+         id ASC`,
     )
     .all()
     .map((row) => ({
@@ -235,30 +289,31 @@ function readArticles(): ArticleItem[] {
     .filter((item) => item.id && item.title && item.link && item.images.length);
 }
 
-export function readArticleCache(rssUrl?: string): ArticleCacheEntry | null {
+export function readArticleCache(
+  _rssUrls?: string | string[],
+): ArticleCacheEntry | null {
   const meta = getCacheDb()
     .prepare(
       `SELECT rss_url, fetched_at
-       FROM article_cache_meta
-       WHERE id = 1`,
+       FROM article_source_meta
+       ORDER BY fetched_at DESC, rss_url ASC`,
     )
-    .get();
-
-  if (!meta) return null;
-
-  const cacheRssUrl = rowString(meta, "rss_url");
-  if (rssUrl && cacheRssUrl !== rssUrl) return null;
+    .all();
+  const items = readArticles();
+  if (items.length === 0) return null;
 
   return {
-    rssUrl: cacheRssUrl,
-    fetchedAt: rowString(meta, "fetched_at"),
-    items: readArticles(),
+    rssUrls: meta.map((row) => rowString(row, "rss_url")).filter(Boolean),
+    fetchedAt: rowString(meta[0], "fetched_at"),
+    items,
   };
 }
 
-export async function syncWechatRssArticles(
-  rssUrl: string,
-): Promise<ArticleCacheEntry> {
+async function fetchArticleSource(rssUrl: string): Promise<{
+  rssUrl: string;
+  fetchedAt: string;
+  items: ArticleItem[];
+}> {
   assertRssUrl(rssUrl);
 
   const response = await axios.get(rssUrl, {
@@ -279,13 +334,58 @@ export async function syncWechatRssArticles(
     throw new Error("RSS 中没有识别到带预览图的文章");
   }
 
-  const entry: ArticleCacheEntry = {
+  return {
     rssUrl,
     fetchedAt: new Date().toISOString(),
     items,
   };
-  replaceArticleCache(entry);
-  return entry;
+}
+
+export async function syncWechatRssArticles(
+  rssUrls: string | string[],
+): Promise<ArticleCacheEntry> {
+  const urls = unique(
+    (Array.isArray(rssUrls) ? rssUrls : [rssUrls])
+      .map((value) => stringValue(value))
+      .filter(Boolean),
+  );
+  if (urls.length === 0) throw new Error("请先填写公众号 RSS 地址");
+
+  const sourceResults: ArticleSourceSyncResult[] = [];
+  for (const rssUrl of urls) {
+    try {
+      const entry = await fetchArticleSource(rssUrl);
+      mergeArticleSource(entry);
+      sourceResults.push({
+        rssUrl,
+        success: true,
+        fetchedAt: entry.fetchedAt,
+        articleCount: entry.items.length,
+        imageCount: entry.items.reduce(
+          (sum, item) => sum + item.images.length,
+          0,
+        ),
+      });
+    } catch (error) {
+      sourceResults.push({
+        rssUrl,
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const successCount = sourceResults.filter((result) => result.success).length;
+  if (successCount === 0) {
+    const errors = unique(
+      sourceResults.map((result) => result.error || "RSS 同步失败"),
+    );
+    throw new Error(errors.join("；"));
+  }
+
+  const cache = readArticleCache();
+  if (!cache) throw new Error("公众号文章已获取，但缓存读取失败");
+  return { ...cache, sourceResults };
 }
 
 function normalizeMatchKey(value: string): string {
@@ -384,17 +484,17 @@ export function readArticleMatchesForItems(
 export function articleCacheSummary(
   cache: ArticleCacheEntry | null,
 ): {
-  rssUrl: string;
   fetchedAt: string;
   articleCount: number;
   imageCount: number;
+  sourceCount: number;
 } | null {
   if (!cache) return null;
 
   return {
-    rssUrl: cache.rssUrl,
     fetchedAt: cache.fetchedAt,
     articleCount: cache.items.length,
     imageCount: cache.items.reduce((sum, item) => sum + item.images.length, 0),
+    sourceCount: cache.rssUrls.length,
   };
 }
